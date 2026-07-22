@@ -50,7 +50,7 @@ def apply_theme() -> None:
         .stApp {{ background: var(--paper); }}
         .main .block-container {{
             max-width: 1480px;
-            padding: 1rem 2rem 3rem;
+            padding: 0 2rem 3rem;
         }}
         h1, h2, h3, h4 {{
             color: var(--ink);
@@ -59,7 +59,12 @@ def apply_theme() -> None:
         h1 {{ font-size: 34px !important; line-height: 1.08 !important; }}
         h2 {{ font-size: 28px !important; line-height: 1.14 !important; }}
         h3 {{ font-size: 20px !important; line-height: 1.2 !important; }}
-        [data-testid="stHeader"] {{ background: transparent; }}
+        [data-testid="stHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stAppDeployButton"],
+        #MainMenu {{
+            display: none !important;
+        }}
         [data-testid="stSidebar"] {{ display: none; }}
 
         .zh-content {{
@@ -316,7 +321,7 @@ def apply_theme() -> None:
         }}
 
         @media (max-width: 600px) {{
-            .main .block-container {{ padding: .7rem .9rem 2rem; }}
+            .main .block-container {{ padding: 0 .9rem 2rem; }}
             .top-shell {{ padding: 14px; }}
             .top-row {{ align-items: flex-start; flex-direction: column; }}
             .top-title {{ font-size: 28px; }}

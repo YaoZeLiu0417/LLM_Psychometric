@@ -146,12 +146,10 @@ def render_provenance(
         ("MODEL", item.model_id or "CURATED SEED"),
     )
     cells = "".join(
-        f"""
-        <div class="trace-cell">
-          <div class="field-label">{_e(label)}</div>
-          <div class="trace-value">{_e(value)}</div>
-        </div>
-        """
+        f'<div class="trace-cell">'
+        f'<div class="field-label">{_e(label)}</div>'
+        f'<div class="trace-value">{_e(value)}</div>'
+        f'</div>'
         for label, value in values
     )
     source_rows = []
@@ -159,25 +157,23 @@ def render_provenance(
         anchor = anchors.get(anchor_id)
         if anchor is None:
             source_rows.append(
-                f"""
-                <div class="source-row">
-                  <div class="source-id">{_e(anchor_id)}</div>
-                  <div class="source-text">SOURCE ANCHOR UNAVAILABLE</div>
-                  <div><span class="status-badge status-flag">DIRECTION UNAVAILABLE</span></div>
-                </div>
-                """
+                f'<div class="source-row">'
+                f'<div class="source-id">{_e(anchor_id)}</div>'
+                f'<div class="source-text">SOURCE ANCHOR UNAVAILABLE</div>'
+                f'<div><span class="status-badge status-flag">'
+                f'DIRECTION UNAVAILABLE</span></div>'
+                f'</div>'
             )
             continue
         direction = "REVERSE KEYED" if anchor.reverse else "FORWARD KEYED"
         direction_class = "status-flag" if anchor.reverse else "status-review"
         source_rows.append(
-            f"""
-            <div class="source-row">
-              <div class="source-id">{_e(anchor.anchor_id)}</div>
-              <div class="source-text zh-content">{_e(anchor.text_zh)}</div>
-              <div><span class="status-badge {_e(direction_class)}">{_e(direction)}</span></div>
-            </div>
-            """
+            f'<div class="source-row">'
+            f'<div class="source-id">{_e(anchor.anchor_id)}</div>'
+            f'<div class="source-text zh-content">{_e(anchor.text_zh)}</div>'
+            f'<div><span class="status-badge {_e(direction_class)}">'
+            f'{_e(direction)}</span></div>'
+            f'</div>'
         )
     st.markdown('<div class="section-heading">PROVENANCE</div>', unsafe_allow_html=True)
     st.markdown(

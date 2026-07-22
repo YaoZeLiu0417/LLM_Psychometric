@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -477,6 +478,22 @@ def test_status_palette_and_responsive_breakpoints_are_exposed() -> None:
     assert "@media (max-width: 600px)" in theme_markup
 
 
+def test_theme_hides_streamlit_chrome_without_reserving_top_space() -> None:
+    app = _run_app("PARTICIPANT VIEW")
+
+    assert not app.exception
+    theme_markup = app.markdown[0].value
+    chrome_rule = """[data-testid="stHeader"],
+[data-testid="stToolbar"],
+[data-testid="stAppDeployButton"],
+#MainMenu {
+    display: none !important;
+}"""
+    assert chrome_rule in theme_markup
+    assert "padding: 0 2rem 3rem;" in theme_markup
+    assert "padding: 0 .9rem 2rem;" in theme_markup
+
+
 def test_provenance_renders_taxonomy_all_anchors_and_evidence_status() -> None:
     app = AppTest.from_string(
         """
@@ -510,6 +527,48 @@ render_provenance(item=item, anchors=load_anchor_asset(ANCHOR_ASSET))
         "status-model-draft" in element.value and "MODEL_DRAFT" in element.value
         for element in app.markdown
     )
+
+
+def test_provenance_html_has_no_indented_markdown_code_blocks() -> None:
+    app = AppTest.from_string(
+        """
+from psychometric_v2.config import ANCHOR_ASSET
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.legacy import load_anchor_asset
+from psychometric_v2.ui.components import render_provenance
+
+project = build_demo_project()
+base = project.items[project.selected_item_id]
+anchor_ids = ("bfi2-sociability-01", "bfi2-sociability-02")
+spec = base.construct_spec.validated_update(anchor_ids=anchor_ids)
+item = base.validated_update(anchor_ids=anchor_ids, construct_spec=spec)
+render_provenance(item=item, anchors=load_anchor_asset(ANCHOR_ASSET))
+        """
+    ).run()
+
+    assert not app.exception
+    trace_markup = next(
+        element.value for element in app.markdown if "trace-record" in element.value
+    )
+    source_markup = next(
+        element.value for element in app.markdown if "source-list" in element.value
+    )
+    for markup in (trace_markup, source_markup):
+        assert re.search(r"(?m)^[ \t]{4,}<", markup) is None
+    assert trace_markup.count('<div class="trace-cell">') == 4
+    assert source_markup.count('<div class="source-row">') == 2
+    for anchor_id in ("bfi2-sociability-01", "bfi2-sociability-02"):
+        assert anchor_id in source_markup
+
+
+def test_generation_actions_do_not_depend_on_material_icon_tokens() -> None:
+    app = _run_app("GENERATION STUDIO")
+
+    assert not app.exception
+    for label in ("GENERATE", "LOAD CURATED EXAMPLE"):
+        button = _button(app, label)
+        assert not button.proto.icon
+        assert ":material/" not in str(button.proto)
 
 
 def test_provenance_shows_safe_fallback_for_missing_anchor() -> None:

@@ -397,7 +397,6 @@ def render(
         generate = st.button(
             "GENERATE",
             key="v2_generate",
-            icon=":material/bolt:",
             disabled=mode != GenerationMode.LIVE.value or not live_ready,
             use_container_width=True,
         )
@@ -405,7 +404,6 @@ def render(
         load_curated = st.button(
             "LOAD CURATED EXAMPLE",
             key="v2_load_curated",
-            icon=":material/inventory_2:",
             disabled=curated is None,
             use_container_width=True,
         )

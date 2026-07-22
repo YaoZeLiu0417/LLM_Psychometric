@@ -3,10 +3,10 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from psychometric_v2.taxonomy import FACETS, LEGACY_FEATURE_MAP
 
@@ -38,6 +38,19 @@ def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
     path.write_text(f"{payload}\n\n", encoding="utf-8")
+
+
+def make_anchor_payloads(tmp_path: Path) -> list[dict[str, object]]:
+    source = tmp_path / "payload-source.jsonl"
+    write_jsonl(source, make_legacy_rows())
+    return [
+        anchor.model_dump(mode="json")
+        for anchor in legacy_module().migrate_anchor_file(source)
+    ]
+
+
+def write_asset(path: Path, payload: object) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 def load_script_module():
@@ -146,15 +159,43 @@ def test_write_and_load_anchor_asset_round_trip(tmp_path: Path) -> None:
     assert "中文题目" in destination.read_text(encoding="utf-8")
     assert list(loaded) == [anchor.anchor_id for anchor in anchors]
     assert list(loaded.values()) == anchors
+    assert set(destination.parent.iterdir()) == {destination}
+
+
+def test_write_anchor_asset_preserves_destination_and_cleans_temp_on_replace_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "data" / "anchors.json"
+    destination.parent.mkdir(parents=True)
+    destination.write_text("original asset", encoding="utf-8")
+    before_files = set(destination.parent.iterdir())
+    replace_calls: list[tuple[Path, Path]] = []
+
+    def fail_replace(source: str | Path, target: str | Path) -> None:
+        replace_calls.append((Path(source), Path(target)))
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+    source = tmp_path / "source.jsonl"
+    write_jsonl(source, make_legacy_rows())
+    anchors = legacy_module().migrate_anchor_file(source)
+
+    with pytest.raises(OSError, match="replace failed"):
+        legacy_module().write_anchor_asset(anchors, destination)
+
+    assert destination.read_text(encoding="utf-8") == "original asset"
+    assert set(destination.parent.iterdir()) == before_files
+    assert len(replace_calls) == 1
+    assert replace_calls[0][0].parent == destination.parent
+    assert replace_calls[0][1] == destination
 
 
 def test_load_anchor_asset_rejects_duplicate_anchor_ids(tmp_path: Path) -> None:
-    source = tmp_path / "source.jsonl"
     asset = tmp_path / "duplicates.json"
-    write_jsonl(source, make_legacy_rows())
-    anchor = legacy_module().migrate_anchor_file(source)[0]
-    payload = anchor.model_dump(mode="json")
-    asset.write_text(json.dumps([payload, payload]), encoding="utf-8")
+    payload = make_anchor_payloads(tmp_path)
+    payload[1]["anchor_id"] = payload[0]["anchor_id"]
+    write_asset(asset, payload)
 
     with pytest.raises(ValueError, match="duplicate anchor_id"):
         legacy_module().load_anchor_asset(asset)
@@ -173,19 +214,96 @@ def test_load_anchor_asset_rejects_empty_or_non_array_json(
 
 
 def test_load_anchor_asset_rejects_damaged_provenance(tmp_path: Path) -> None:
-    source = tmp_path / "source.jsonl"
     asset = tmp_path / "damaged.json"
-    write_jsonl(source, make_legacy_rows())
-    anchor = legacy_module().migrate_anchor_file(source)[0]
-    payload = anchor.model_dump(mode="json")
-    payload["domain_id"] = "agreeableness"
-    asset.write_text(json.dumps([payload]), encoding="utf-8")
+    payload = make_anchor_payloads(tmp_path)
+    payload[0]["domain_id"] = "agreeableness"
+    write_asset(asset, payload)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError, match="invalid anchor at position 1"):
         legacy_module().load_anchor_asset(asset)
 
 
-def test_cli_accepts_explicit_read_only_source(tmp_path: Path, monkeypatch) -> None:
+def test_load_anchor_asset_requires_exactly_60_anchors(tmp_path: Path) -> None:
+    asset = tmp_path / "short.json"
+    write_asset(asset, make_anchor_payloads(tmp_path)[:-1])
+
+    with pytest.raises(ValueError, match="exactly 60 anchors"):
+        legacy_module().load_anchor_asset(asset)
+
+
+@pytest.mark.parametrize("corruption", ["duplicate", "out-of-order"])
+def test_load_anchor_asset_requires_sequential_item_numbers(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    asset = tmp_path / f"item-numbers-{corruption}.json"
+    payload = make_anchor_payloads(tmp_path)
+    if corruption == "duplicate":
+        payload[1]["item_number"] = payload[0]["item_number"]
+    else:
+        payload[0], payload[1] = payload[1], payload[0]
+    write_asset(asset, payload)
+
+    with pytest.raises(ValueError, match="item_number sequence"):
+        legacy_module().load_anchor_asset(asset)
+
+
+def test_load_anchor_asset_requires_exactly_30_reverse_anchors(
+    tmp_path: Path,
+) -> None:
+    asset = tmp_path / "reverse-count.json"
+    payload = make_anchor_payloads(tmp_path)
+    payload[0]["reverse"] = not payload[0]["reverse"]
+    write_asset(asset, payload)
+
+    with pytest.raises(ValueError, match="exactly 30 reverse anchors"):
+        legacy_module().load_anchor_asset(asset)
+
+
+def test_load_anchor_asset_requires_four_anchors_for_every_facet(
+    tmp_path: Path,
+) -> None:
+    asset = tmp_path / "facet-count.json"
+    payload = make_anchor_payloads(tmp_path)
+    replacement = payload[0].copy()
+    replacement.update(
+        anchor_id="bfi2-sociability-05",
+        item_number=payload[-1]["item_number"],
+        reverse=payload[-1]["reverse"],
+    )
+    payload[-1] = replacement
+    write_asset(asset, payload)
+
+    with pytest.raises(ValueError, match="exactly 4 anchors for every facet"):
+        legacy_module().load_anchor_asset(asset)
+
+
+def test_load_anchor_asset_requires_canonical_source(tmp_path: Path) -> None:
+    asset = tmp_path / "source.json"
+    payload = make_anchor_payloads(tmp_path)
+    payload[0]["source"] = "untrusted_source"
+    write_asset(asset, payload)
+
+    with pytest.raises(ValueError, match="source must be legacy_big_five_60"):
+        legacy_module().load_anchor_asset(asset)
+
+
+def test_load_anchor_asset_requires_facet_local_anchor_id_sequence(
+    tmp_path: Path,
+) -> None:
+    asset = tmp_path / "anchor-id.json"
+    payload = make_anchor_payloads(tmp_path)
+    payload[0]["anchor_id"] = "bfi2-sociability-99"
+    write_asset(asset, payload)
+
+    with pytest.raises(ValueError, match="anchor_id sequence"):
+        legacy_module().load_anchor_asset(asset)
+
+
+def test_cli_accepts_explicit_read_only_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = tmp_path / "external" / "legacy.jsonl"
     destination = tmp_path / "repo" / "anchors.json"
     write_jsonl(source, make_legacy_rows())
@@ -199,6 +317,48 @@ def test_cli_accepts_explicit_read_only_source(tmp_path: Path, monkeypatch) -> N
     assert source.read_bytes() == before
     loaded = legacy_module().load_anchor_asset(destination)
     assert len(loaded) == 60
+
+
+def test_cli_rejects_destination_equal_to_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "legacy.jsonl"
+    write_jsonl(source, make_legacy_rows())
+    before = source.read_bytes()
+    script = load_script_module()
+    monkeypatch.setattr(script, "DESTINATION", source)
+
+    with pytest.raises(ValueError, match="source and destination"):
+        script.main(["--source", str(source)])
+
+    assert source.read_bytes() == before
+
+
+@pytest.mark.parametrize("alias_kind", ["hardlink", "symlink"])
+def test_cli_rejects_destination_alias_of_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    alias_kind: str,
+) -> None:
+    source = tmp_path / "legacy.jsonl"
+    destination = tmp_path / "anchors.json"
+    write_jsonl(source, make_legacy_rows())
+    if alias_kind == "hardlink":
+        os.link(source, destination)
+    else:
+        try:
+            destination.symlink_to(source)
+        except OSError as exc:
+            pytest.skip(f"symlinks unavailable: {exc}")
+    before = source.read_bytes()
+    script = load_script_module()
+    monkeypatch.setattr(script, "DESTINATION", destination)
+
+    with pytest.raises(ValueError, match="source and destination"):
+        script.main(["--source", str(source)])
+
+    assert source.read_bytes() == before
 
 
 def test_packaged_anchor_asset_has_expected_inventory() -> None:

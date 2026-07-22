@@ -40,9 +40,19 @@ def _source_path(explicit_source: Path | None) -> Path:
     return discover_legacy_anchor_file(ROOT)
 
 
+def _reject_source_destination_alias(source: Path) -> None:
+    try:
+        same_file = source.samefile(DESTINATION)
+    except OSError:
+        same_file = source.resolve() == DESTINATION.resolve()
+    if same_file:
+        raise ValueError("source and destination must identify different files")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     source = _source_path(args.source)
+    _reject_source_destination_alias(source)
     anchors = migrate_anchor_file(source)
     if len(anchors) != 60:
         raise ValueError("legacy anchor migration must produce exactly 60 anchors")

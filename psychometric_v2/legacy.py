@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+from collections import Counter
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+from pydantic import ValidationError
 
 from psychometric_v2.models import ConstructAnchor
 from psychometric_v2.taxonomy import FACETS, LEGACY_FEATURE_MAP
@@ -65,10 +70,28 @@ def write_anchor_asset(
     destination_path = Path(destination)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     payload = [anchor.model_dump(mode="json") for anchor in anchors]
-    destination_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    serialized = json.dumps(payload, ensure_ascii=False, indent=2)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=destination_path.parent,
+            prefix=f".{destination_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(serialized)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_path, destination_path)
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def load_anchor_asset(path: str | Path) -> dict[str, ConstructAnchor]:
@@ -77,13 +100,42 @@ def load_anchor_asset(path: str | Path) -> dict[str, ConstructAnchor]:
         raise ValueError("anchor asset must be a non-empty JSON array")
 
     anchors: dict[str, ConstructAnchor] = {}
-    for raw_anchor in payload:
-        anchor = ConstructAnchor.model_validate(
-            raw_anchor,
-            strict=True,
-            extra="forbid",
-        )
+    ordered_anchors: list[ConstructAnchor] = []
+    for position, raw_anchor in enumerate(payload, start=1):
+        try:
+            anchor = ConstructAnchor.model_validate(
+                raw_anchor,
+                strict=True,
+                extra="forbid",
+            )
+        except ValidationError as exc:
+            raise ValueError(f"invalid anchor at position {position}: {exc}") from exc
         if anchor.anchor_id in anchors:
             raise ValueError(f"duplicate anchor_id: {anchor.anchor_id}")
         anchors[anchor.anchor_id] = anchor
+        ordered_anchors.append(anchor)
+
+    if len(ordered_anchors) != 60:
+        raise ValueError("anchor asset must contain exactly 60 anchors")
+    if [anchor.item_number for anchor in ordered_anchors] != list(range(1, 61)):
+        raise ValueError("anchor asset item_number sequence must be exactly 1..60")
+    if sum(anchor.reverse for anchor in ordered_anchors) != 30:
+        raise ValueError("anchor asset must contain exactly 30 reverse anchors")
+
+    facet_counts = Counter(anchor.facet_id for anchor in ordered_anchors)
+    if len(facet_counts) != 15 or set(facet_counts) != set(FACETS):
+        raise ValueError("anchor asset must cover exactly 15 facets matching FACETS")
+    if set(facet_counts.values()) != {4}:
+        raise ValueError("anchor asset must contain exactly 4 anchors for every facet")
+    if any(anchor.source != "legacy_big_five_60" for anchor in ordered_anchors):
+        raise ValueError("anchor source must be legacy_big_five_60")
+
+    facet_numbers: defaultdict[str, int] = defaultdict(int)
+    for anchor in ordered_anchors:
+        facet_numbers[anchor.facet_id] += 1
+        expected_id = f"bfi2-{anchor.facet_id}-{facet_numbers[anchor.facet_id]:02d}"
+        if anchor.anchor_id != expected_id:
+            raise ValueError(
+                "anchor asset anchor_id sequence must match facet loading order"
+            )
     return anchors

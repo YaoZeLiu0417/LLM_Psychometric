@@ -48,7 +48,7 @@ def apply_theme() -> None:
             color: var(--text);
         }}
         .stApp {{ background: var(--paper); }}
-        .main .block-container {{
+        [data-testid="stMainBlockContainer"] {{
             max-width: 1480px;
             padding: 0 2rem 3rem;
         }}
@@ -316,12 +316,12 @@ def apply_theme() -> None:
         }}
 
         @media (max-width: 1280px) {{
-            .main .block-container {{ padding-right: 1.25rem; padding-left: 1.25rem; }}
+            [data-testid="stMainBlockContainer"] {{ padding-right: 1.25rem; padding-left: 1.25rem; }}
             .trace-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
         }}
 
         @media (max-width: 600px) {{
-            .main .block-container {{ padding: 0 .9rem 2rem; }}
+            [data-testid="stMainBlockContainer"] {{ padding: 0 .9rem 2rem; }}
             .top-shell {{ padding: 14px; }}
             .top-row {{ align-items: flex-start; flex-direction: column; }}
             .top-title {{ font-size: 28px; }}

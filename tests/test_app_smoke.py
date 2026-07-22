@@ -490,8 +490,19 @@ def test_theme_hides_streamlit_chrome_without_reserving_top_space() -> None:
     display: none !important;
 }"""
     assert chrome_rule in theme_markup
-    assert "padding: 0 2rem 3rem;" in theme_markup
-    assert "padding: 0 .9rem 2rem;" in theme_markup
+    desktop_container_rule = """[data-testid="stMainBlockContainer"] {
+    max-width: 1480px;
+    padding: 0 2rem 3rem;
+}"""
+    assert desktop_container_rule in theme_markup
+    assert (
+        '[data-testid="stMainBlockContainer"] { '
+        'padding-right: 1.25rem; padding-left: 1.25rem; }'
+    ) in theme_markup
+    assert (
+        '[data-testid="stMainBlockContainer"] { padding: 0 .9rem 2rem; }'
+    ) in theme_markup
+    assert ".main .block-container" not in theme_markup
 
 
 def test_provenance_renders_taxonomy_all_anchors_and_evidence_status() -> None:

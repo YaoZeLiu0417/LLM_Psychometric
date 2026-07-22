@@ -1,0 +1,249 @@
+from copy import deepcopy
+
+import pytest
+
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.models import (
+    CandidateItem,
+    CheckOutcome,
+    CheckSeverity,
+    EvidenceStatus,
+    GenerationMode,
+    QualityCheck,
+    ReviewAction,
+)
+from psychometric_v2.repository import JsonProjectRepository
+from psychometric_v2.workbench import WorkbenchService
+
+
+def service_with_seed(tmp_path):
+    repository = JsonProjectRepository(tmp_path / "projects")
+    project = build_demo_project()
+    repository.save(project)
+    return WorkbenchService(repository), repository, project
+
+
+def review(
+    service: WorkbenchService,
+    project_id: str,
+    item: CandidateItem,
+    *,
+    stem: str | None = None,
+    options=None,
+    reviewer: str = "reviewer-a",
+    action: ReviewAction = ReviewAction.EDIT,
+    note: str = "记录本次修改理由",
+):
+    return service.review_item(
+        project_id,
+        item.item_id,
+        stem if stem is not None else item.stem_zh,
+        item.options if options is None else options,
+        reviewer,
+        action,
+        note,
+    )
+
+
+def test_edit_builds_immutable_independent_history_and_persists(tmp_path) -> None:
+    service, repository, original_project = service_with_seed(tmp_path)
+    original_item = next(iter(original_project.items.values()))
+    original_dump = deepcopy(original_item.model_dump(mode="json"))
+
+    updated_project = review(
+        service,
+        original_project.config.project_id,
+        original_item,
+        stem="社团活动中需要自由组队，你会怎样开始行动？",
+    )
+
+    updated = updated_project.items[original_item.item_id]
+    version = updated.review_versions[0]
+    assert original_item.model_dump(mode="json") == original_dump
+    assert updated is not original_item
+    assert updated.evidence_status is EvidenceStatus.NEEDS_REVISION
+    assert version.version == 1
+    assert version.before_stem_zh == original_item.stem_zh
+    assert version.after_stem_zh == updated.stem_zh
+    assert version.before_options is not version.after_options
+    assert version.before_options[0] is not version.after_options[0]
+    assert repository.load(original_project.config.project_id) == updated_project
+
+
+def test_approve_uses_human_reviewed_without_validated_status(tmp_path) -> None:
+    service, _, project = service_with_seed(tmp_path)
+    item = next(iter(project.items.values()))
+
+    approved_project = review(
+        service,
+        project.config.project_id,
+        item,
+        action=ReviewAction.APPROVE,
+        note="内容符合人工审核要求",
+    )
+
+    assert approved_project.items[item.item_id].evidence_status is EvidenceStatus.HUMAN_REVIEWED
+    assert "VALIDATED" not in {status.value for status in EvidenceStatus}
+
+
+def test_promotion_requires_current_human_reviewed_status(tmp_path) -> None:
+    service, _, project = service_with_seed(tmp_path)
+    item = next(iter(project.items.values()))
+
+    with pytest.raises(ValueError, match="HUMAN_REVIEWED"):
+        review(
+            service,
+            project.config.project_id,
+            item,
+            action=ReviewAction.PROMOTE_TO_PILOT,
+            note="尝试进入预测试",
+        )
+
+    approved = review(
+        service,
+        project.config.project_id,
+        item,
+        action=ReviewAction.APPROVE,
+        note="人工审核通过",
+    )
+    reviewed_item = approved.items[item.item_id]
+    promoted = review(
+        service,
+        project.config.project_id,
+        reviewed_item,
+        action=ReviewAction.PROMOTE_TO_PILOT,
+        note="进入预测试候选",
+    )
+
+    assert promoted.items[item.item_id].evidence_status is EvidenceStatus.PILOT_CANDIDATE
+
+
+def test_review_requires_nonblank_note_stem_and_reviewer(tmp_path) -> None:
+    service, _, project = service_with_seed(tmp_path)
+    item = next(iter(project.items.values()))
+
+    for field, values in (
+        ("note", {"note": " "}),
+        ("stem", {"stem": "\t"}),
+        ("reviewer", {"reviewer": ""}),
+    ):
+        with pytest.raises(ValueError, match=field):
+            review(service, project.config.project_id, item, **values)
+
+
+def test_review_rejects_missing_project_item_and_invalid_options(tmp_path) -> None:
+    service, _, project = service_with_seed(tmp_path)
+    item = next(iter(project.items.values()))
+
+    with pytest.raises(FileNotFoundError, match="missing-project"):
+        review(service, "missing-project", item)
+    with pytest.raises(KeyError, match="missing-item"):
+        service.review_item(
+            project.config.project_id,
+            "missing-item",
+            item.stem_zh,
+            item.options,
+            "reviewer",
+            ReviewAction.EDIT,
+            "修改",
+        )
+    with pytest.raises(ValueError, match="options"):
+        review(
+            service,
+            project.config.project_id,
+            item,
+            options=item.options[:3],
+        )
+
+
+def test_return_sets_needs_revision_and_versions_are_numbered(tmp_path) -> None:
+    service, repository, project = service_with_seed(tmp_path)
+    item = next(iter(project.items.values()))
+
+    first_project = review(
+        service,
+        project.config.project_id,
+        item,
+        stem="第一次修改后的题干",
+        action=ReviewAction.EDIT,
+        note="第一次修改",
+    )
+    first = first_project.items[item.item_id]
+    second_project = review(
+        service,
+        project.config.project_id,
+        first,
+        stem="第二次退回后的题干",
+        action=ReviewAction.RETURN,
+        note="仍需修改",
+    )
+    second = second_project.items[item.item_id]
+
+    assert [version.version for version in second.review_versions] == [1, 2]
+    assert second.review_versions[1].before_stem_zh == first.stem_zh
+    assert second.review_versions[1].after_stem_zh == second.stem_zh
+    assert second.evidence_status is EvidenceStatus.NEEDS_REVISION
+    assert repository.load(project.config.project_id) == second_project
+
+
+def test_review_rebuilds_deterministic_checks_and_preserves_model_checks(tmp_path) -> None:
+    service, repository, project = service_with_seed(tmp_path)
+    item = next(iter(project.items.values()))
+    model_check = QualityCheck(
+        check_id="MODEL_ECOLOGY",
+        label="生态合理性",
+        severity=CheckSeverity.WARNING,
+        outcome=CheckOutcome.PASS,
+        evidence="场景合理",
+    )
+    item_with_model_check = CandidateItem.model_validate(
+        {
+            **item.model_dump(mode="python"),
+            "quality_checks": (*item.quality_checks, model_check),
+            "generation_mode": GenerationMode.LIVE,
+            "model_id": "fake-model",
+        }
+    )
+    project_with_model_check = project.validated_update(
+        items={**dict(project.items), item.item_id: item_with_model_check}
+    )
+    repository.save(project_with_model_check)
+
+    result = review(
+        service,
+        project.config.project_id,
+        item_with_model_check,
+        stem="保留模型检查并重跑确定性检查的题干",
+    )
+    updated = result.items[item.item_id]
+
+    assert "MODEL_ECOLOGY" in {check.check_id for check in updated.quality_checks}
+    assert "OPTION_COUNT" in {check.check_id for check in updated.quality_checks}
+    assert updated.generation_mode is GenerationMode.LIVE
+    assert updated.model_id == "fake-model"
+
+
+def test_save_generated_item_adds_selects_validated_snapshot_and_persists(tmp_path) -> None:
+    service, repository, project = service_with_seed(tmp_path)
+    source = next(iter(project.items.values()))
+    generated = CandidateItem.model_validate(
+        {
+            **source.model_dump(mode="python"),
+            "item_id": "live-sociability-test123",
+            "generation_mode": GenerationMode.LIVE,
+            "model_id": "fake-model",
+        }
+    )
+
+    saved = service.save_generated_item(project.config.project_id, generated)
+
+    assert saved.selected_item_id == generated.item_id
+    assert saved.items[generated.item_id] == generated
+    assert repository.load(project.config.project_id) == saved
+
+
+def test_save_generated_item_rejects_invalid_or_mismatched_input(tmp_path) -> None:
+    service, _, project = service_with_seed(tmp_path)
+
+    with pytest.raises(ValueError, match="CandidateItem"):
+        service.save_generated_item(project.config.project_id, {"item_id": "wrong"})

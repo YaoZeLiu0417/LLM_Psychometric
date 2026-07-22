@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from types import MappingProxyType
 
 
 @dataclass(frozen=True)
@@ -19,7 +20,7 @@ class FacetDefinition:
     definition_zh: str
 
 
-DOMAINS = {
+DOMAINS = MappingProxyType({
     "extraversion": DomainDefinition(
         "extraversion", "Extraversion", "外向性", "外向性", "#D81B78"
     ),
@@ -43,9 +44,9 @@ DOMAINS = {
         "开放性",
         "#40358C",
     ),
-}
+})
 
-_FACET_ROWS = [
+_FACET_ROWS = (
     (
         "sociability",
         "extraversion",
@@ -151,11 +152,13 @@ _FACET_ROWS = [
         "创造想象",
         "形成新颖联想、设想和表达方式的倾向。",
     ),
-]
+)
 
-FACETS = {row[0]: FacetDefinition(*row) for row in _FACET_ROWS}
+FACETS = MappingProxyType(
+    {row[0]: FacetDefinition(*row) for row in _FACET_ROWS}
+)
 
-LEGACY_FEATURE_MAP = {
+LEGACY_FEATURE_MAP = MappingProxyType({
     "外向性、社交": "sociability",
     "外向性、果断": "assertiveness",
     "外向性、活力": "energy_level",
@@ -171,4 +174,4 @@ LEGACY_FEATURE_MAP = {
     "开放性、好奇": "intellectual_curiosity",
     "开放性、审美": "aesthetic_sensitivity",
     "开放性、想象": "creative_imagination",
-}
+})

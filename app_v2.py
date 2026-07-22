@@ -1,6 +1,8 @@
+import os
+
 import streamlit as st
 
-from psychometric_v2.config import ANCHOR_ASSET, ROOT, LiveModelConfig, ModelUnavailable
+from psychometric_v2.config import ANCHOR_ASSET, ROOT
 from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.legacy import load_anchor_asset
 from psychometric_v2.repository import JsonProjectRepository
@@ -19,18 +21,19 @@ st.set_page_config(
 )
 apply_theme()
 init_state()
+pending_generation_mode = st.session_state.pop("v2_pending_generation_mode", None)
+if pending_generation_mode in ("CURATED DEMO", "LIVE GENERATION"):
+    st.session_state["v2_generation_mode"] = pending_generation_mode
 
 repository = JsonProjectRepository(ROOT / "workspace_data" / "v2" / "projects")
 research_project = repository.ensure_seed(build_demo_project())
 construct_anchors = load_anchor_asset(ANCHOR_ASSET)
 workbench = WorkbenchService(repository)
 
-try:
-    LiveModelConfig.from_env()
-except ModelUnavailable:
-    live_available = False
-else:
-    live_available = True
+live_available = bool(
+    os.getenv("OPENAI_API_KEY", "").strip()
+    and os.getenv("LLM_MODEL", "").strip()
+)
 
 render_header(research_project, live_available=live_available)
 active_page = render_navigation()

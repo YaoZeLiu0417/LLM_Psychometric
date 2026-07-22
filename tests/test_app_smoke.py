@@ -2,6 +2,11 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.models import GenerationMode
+from psychometric_v2.pipeline import GenerationStageError
+from psychometric_v2.ui.pages import generation
+
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / "app_v2.py"
@@ -42,6 +47,14 @@ def _run_app(page: str | None = None) -> AppTest:
 
 def _markdown(app: AppTest) -> str:
     return "\n".join(element.value for element in app.markdown)
+
+
+def _button(app: AppTest, label: str):
+    return next(button for button in app.button if button.label == label)
+
+
+def _widget_with_key(widgets, key: str):
+    return next(widget for widget in widgets if widget.key == key)
 
 
 def test_app_starts_without_live_model_configuration(monkeypatch) -> None:
@@ -201,65 +214,224 @@ render_provenance(item=item, anchors={})
     assert "SOURCE ANCHOR UNAVAILABLE" in markdown
 
 
-def test_live_button_follows_environment_without_calling_a_model(monkeypatch) -> None:
+def test_generation_studio_exposes_stages_and_safe_curated_fallback(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("LLM_MODEL", raising=False)
-    unavailable = _run_app("GENERATION STUDIO")
 
-    assert not unavailable.exception
-    assert len(unavailable.button) == 1
-    assert unavailable.button[0].key == "v2_live_generation"
-    assert unavailable.button[0].disabled is True
+    def forbidden_live_initialization(*_args, **_kwargs):
+        raise AssertionError("disabled generation must not initialize a live client")
 
+    monkeypatch.setattr(
+        generation.LiveModelConfig,
+        "from_env",
+        staticmethod(forbidden_live_initialization),
+    )
+    monkeypatch.setattr(
+        generation,
+        "OpenAICompatibleClient",
+        forbidden_live_initialization,
+    )
+    app = _run_app("GENERATION STUDIO")
+
+    assert not app.exception
+    text = _markdown(app)
+    for stage in (
+        "CONSTRUCT SPECIFICATION",
+        "SCENARIO BLUEPRINT",
+        "RESPONSE OPTIONS",
+        "QUALITY CHECKS",
+    ):
+        assert stage in text
+    assert _button(app, "GENERATE").disabled is True
+    assert _button(app, "LOAD CURATED EXAMPLE").disabled is False
+    assert all(
+        widget.key.startswith("v2_")
+        for widgets in (app.selectbox, app.button)
+        for widget in widgets
+    )
+
+    app.run()
+    app.run()
+    assert not app.exception
+    assert _button(app, "GENERATE").disabled is True
+    assert "PROVENANCE" in _markdown(app)
+
+    _button(app, "LOAD CURATED EXAMPLE").click().run()
+    assert not app.exception
+    assert app.session_state["v2_generation_mode"] == "CURATED DEMO"
+    assert app.session_state["v2_construct_spec"].facet_id == "sociability"
+    assert app.session_state["v2_scenario_blueprint"].context_domain == "club"
+    assert app.session_state["v2_candidate_item"].item_id == (
+        "demo-extraversion-sociability"
+    )
+    assert app.session_state["v2_selected_item"] == "demo-extraversion-sociability"
+
+
+def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
     monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
-    available = _run_app("GENERATION STUDIO")
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    partial_candidate = seed.validated_update(
+        item_id="live-sociability-partial",
+        generation_mode=GenerationMode.LIVE,
+        model_id="fake-app-test-model",
+    )
+    calls: list[str] = []
 
-    assert not available.exception
-    assert len(available.button) == 1
-    assert available.button[0].key == "v2_live_generation"
-    assert available.button[0].disabled is False
+    def fake_config():
+        calls.append("config")
+        return object()
 
-    available.button[0].click().run()
-    assert not available.exception
-    assert available.session_state["v2_generation_mode"] == "LIVE GENERATION"
-    live_text = _markdown(available)
-    assert '<span class="mode-badge">LIVE GENERATION</span>' in live_text
-    assert "LIVE WORKSPACE READY" in live_text
-    assert "CURATED SEED" not in live_text
-    assert "新学期社团第一次活动" not in live_text
-    assert "主动和附近几位同学打招呼" not in live_text
-    assert "PROVENANCE" not in live_text
-    assert [button.key for button in available.button] == ["v2_return_curated"]
+    def fake_client(_config):
+        calls.append("client")
+        return object()
 
-    available.run()
-    assert not available.exception
-    assert "CURATED SEED" not in _markdown(available)
+    class FailingPipeline:
+        def __init__(self, _client) -> None:
+            calls.append("pipeline")
 
-    available.get("button_group")[0].set_value(["REVIEW"]).run()
-    assert not available.exception
-    assert available.session_state["v2_generation_mode"] == "LIVE GENERATION"
-    review_text = _markdown(available)
-    assert '<span class="mode-badge">CURATED DEMO</span>' in review_text
-    assert '<span class="mode-badge">LIVE GENERATION</span>' not in review_text
-    assert "CURATED SEED" in review_text
-    assert "REVIEW QUEUE" in review_text
+        def generate_candidate(self, _config, _anchor, _context):
+            calls.append("generate_candidate")
+            raise GenerationStageError(
+                "quality",
+                "The quality stage returned invalid structured data.",
+                partial_results={
+                    "construct": partial_candidate.construct_spec,
+                    "blueprint": partial_candidate.scenario_blueprint,
+                    "candidate": partial_candidate,
+                    "options": partial_candidate,
+                    "raw": "SECRET RAW RESPONSE",
+                },
+            )
 
-    available.get("button_group")[0].set_value(["GENERATION STUDIO"]).run()
-    assert not available.exception
-    assert available.session_state["v2_generation_mode"] == "LIVE GENERATION"
-    resumed_text = _markdown(available)
-    assert '<span class="mode-badge">LIVE GENERATION</span>' in resumed_text
-    assert "LIVE WORKSPACE READY" in resumed_text
-    assert "CURATED SEED" not in resumed_text
+    monkeypatch.setattr(
+        generation.LiveModelConfig,
+        "from_env",
+        staticmethod(fake_config),
+    )
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", fake_client)
+    monkeypatch.setattr(generation, "GenerationPipeline", FailingPipeline)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    app.session_state["v2_generation_mode"] = "LIVE GENERATION"
+    app.run()
 
-    available.button[0].click().run()
-    assert not available.exception
-    assert available.session_state["v2_generation_mode"] == "CURATED DEMO"
-    curated_text = _markdown(available)
-    assert '<span class="mode-badge">CURATED DEMO</span>' in curated_text
-    assert "CURATED SEED" in curated_text
-    assert "PROVENANCE" in curated_text
+    assert not app.exception
+    assert _button(app, "GENERATE").disabled is False
+    assert calls == []
+    _button(app, "GENERATE").click().run()
+
+    assert not app.exception
+    assert calls == ["config", "client", "pipeline", "generate_candidate"]
+    assert app.error[0].value == (
+        "The quality stage returned invalid structured data."
+    )
+    assert "SECRET RAW RESPONSE" not in _markdown(app)
+    assert app.session_state["v2_construct_spec"].facet_id == "sociability"
+    assert app.session_state["v2_scenario_blueprint"].context_domain == "club"
+    assert app.session_state["v2_candidate_item"].item_id == (
+        "live-sociability-partial"
+    )
+    assert app.session_state["v2_generation_options"].item_id == (
+        "live-sociability-partial"
+    )
+    assert app.session_state["v2_stage_status"]["QUALITY CHECKS"] == "ERROR"
+
+    _button(app, "LOAD CURATED EXAMPLE").click().run()
+    assert not app.exception
+    assert app.session_state["v2_generation_mode"] == "CURATED DEMO"
+    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
+    assert '<span class="mode-badge">LIVE GENERATION</span>' not in _markdown(app)
+    assert app.session_state["v2_candidate_item"].generation_mode is GenerationMode.CURATED
+    assert app.session_state["v2_candidate_item"].item_id == (
+        "demo-extraversion-sociability"
+    )
+
+
+def test_review_queue_editor_actions_and_reruns_are_stable() -> None:
+    app = _run_app("REVIEW")
+
+    assert not app.exception
+    queue = app.dataframe[0].value
+    assert len(queue) == 5
+    assert list(queue.columns) == [
+        "ITEM ID",
+        "DOMAIN",
+        "FACET",
+        "CONTEXT",
+        "ERRORS",
+        "WARNINGS",
+        "STATUS",
+        "VERSIONS",
+    ]
+    assert _widget_with_key(app.selectbox, "v2_review_item")
+    assert len(app.text_area) == 1
+    assert len(
+        [widget for widget in app.text_input if widget.key.startswith("v2_review_option_")]
+    ) == 4
+    assert any(expander.label == "RESEARCH METADATA" for expander in app.expander)
+    for label in (
+        "SAVE REVISION",
+        "RETURN",
+        "APPROVE CONTENT",
+        "PROMOTE TO PILOT",
+    ):
+        assert _button(app, label)
+    assert _button(app, "PROMOTE TO PILOT").disabled is True
+
+    app.run()
+    app.run()
+    assert not app.exception
+    assert len(app.dataframe[0].value) == 5
+    assert _button(app, "PROMOTE TO PILOT").disabled is True
+
+
+def test_review_requires_note_before_creating_a_version() -> None:
+    app = _run_app("REVIEW")
+    before = app.dataframe[0].value.copy()
+    _widget_with_key(app.text_input, "v2_review_reviewer").set_value("reviewer-a")
+
+    _button(app, "SAVE REVISION").click().run()
+
+    assert not app.exception
+    assert app.error
+    assert "Reviewer and note are required." in app.error[0].value
+    assert app.dataframe[0].value.equals(before)
+
+
+def test_review_actions_persist_through_isolated_service(tmp_path) -> None:
+    repository_root = tmp_path / "projects"
+    app = AppTest.from_string(
+        f"""
+from pathlib import Path
+
+from psychometric_v2.config import ANCHOR_ASSET
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.legacy import load_anchor_asset
+from psychometric_v2.repository import JsonProjectRepository
+from psychometric_v2.ui.pages.review import render
+from psychometric_v2.ui.state import init_state
+from psychometric_v2.workbench import WorkbenchService
+
+repository = JsonProjectRepository(Path({str(repository_root)!r}))
+project = repository.ensure_seed(build_demo_project())
+init_state()
+render(project, load_anchor_asset(ANCHOR_ASSET), WorkbenchService(repository))
+        """,
+        default_timeout=10,
+    ).run()
+    _widget_with_key(app.text_input, "v2_review_reviewer").set_value("reviewer-a")
+    _widget_with_key(app.text_input, "v2_review_note").set_value("content approved")
+
+    _button(app, "APPROVE CONTENT").click().run()
+
+    assert not app.exception
+    queue = app.dataframe[0].value
+    selected_id = app.session_state["v2_review_item"]
+    selected = queue.loc[queue["ITEM ID"] == selected_id].iloc[0]
+    assert selected["STATUS"] == "HUMAN_REVIEWED"
+    assert selected["VERSIONS"] == 1
+    assert _button(app, "PROMOTE TO PILOT").disabled is False
 
 
 def test_review_header_uses_selected_live_item_generation_mode() -> None:

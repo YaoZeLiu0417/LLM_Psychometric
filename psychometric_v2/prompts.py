@@ -12,6 +12,19 @@ from psychometric_v2.models import (
 )
 
 
+REQUIRED_QUALITY_CHECK_IDS = (
+    "AGE_FIT",
+    "ECOLOGICAL_PLAUSIBILITY",
+    "CONSTRUCT_ALIGNMENT",
+    "CONFOUNDS",
+    "DISTINGUISHABILITY",
+    "SOCIAL_DESIRABILITY",
+    "ANSWER_OBVIOUSNESS",
+    "LANGUAGE_COMPLEXITY",
+    "SAFETY",
+)
+
+
 _COMMON_SYSTEM = """You support psychometric item drafting for Mainland Chinese students aged 12-15 (中国大陆 12–15 岁).
 Return one JSON object only, using exactly the fields requested for this stage. Write all participant-facing content in 简体中文 and ground judgments in 可观察行为.
 Do not provide chain-of-thought or hidden reasoning. Provide only concise observable rationale (简短、可观察的理由) where a rationale field is requested.
@@ -104,6 +117,7 @@ def quality_prompt(
     item: CandidateItem,
     config: ProjectConfig,
 ) -> tuple[str, str]:
+    required_ids = ", ".join(REQUIRED_QUALITY_CHECK_IDS)
     fields = {
         "checks": [
             {
@@ -121,6 +135,7 @@ Population: 中国大陆 {config.age_min}–{config.age_max} 岁初中生. Conte
 Review this 简体中文 candidate using concise, 可观察 evidence only; do not provide chain-of-thought or hidden reasoning:
 {_json(item)}
 Return structured checks covering all of: 年龄适配, 生态合理性, 构念一致性, 混淆, 可区分性, 社会赞许性, 答案明显性, 语言复杂度, 安全.
+The checks array must include each of these exact check_id values at least once: {required_ids}.
 Return only these current-stage JSON fields:
 {_json(fields)}"""
     return _COMMON_SYSTEM, user

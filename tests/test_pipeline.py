@@ -22,6 +22,19 @@ from psychometric_v2.prompts import (
 )
 
 
+REQUIRED_QUALITY_IDS = (
+    "AGE_FIT",
+    "ECOLOGICAL_PLAUSIBILITY",
+    "CONSTRUCT_ALIGNMENT",
+    "CONFOUNDS",
+    "DISTINGUISHABILITY",
+    "SOCIAL_DESIRABILITY",
+    "ANSWER_OBVIOUSNESS",
+    "LANGUAGE_COMPLEXITY",
+    "SAFETY",
+)
+
+
 class QueueClient:
     model_id = "fake-model"
 
@@ -96,17 +109,26 @@ def options_payload(*, valid: bool = True, **changes: object) -> dict[str, objec
     return payload
 
 
-def quality_payload(check_id: str = "MODEL_AGE_FIT") -> dict[str, object]:
+def quality_payload(
+    *,
+    missing: tuple[str, ...] = (),
+    extra_ids: tuple[str, ...] = (),
+) -> dict[str, object]:
+    check_ids = [
+        check_id for check_id in REQUIRED_QUALITY_IDS if check_id not in missing
+    ]
+    check_ids.extend(extra_ids)
     return {
         "checks": [
             {
                 "check_id": check_id,
-                "label": "年龄适配",
+                "label": check_id,
                 "severity": CheckSeverity.WARNING.value,
                 "outcome": CheckOutcome.PASS.value,
                 "evidence": "场景和措辞符合初中生日常经验。",
                 "recommendation": "",
             }
+            for check_id in check_ids
         ]
     }
 
@@ -162,6 +184,8 @@ def test_prompts_scope_each_stage_and_require_safe_observable_chinese() -> None:
         "安全",
     ):
         assert check in quality_text
+    for check_id in REQUIRED_QUALITY_IDS:
+        assert check_id in quality_text
 
 
 def test_pipeline_repairs_invalid_options_once_and_merges_quality_checks() -> None:
@@ -204,7 +228,7 @@ def test_pipeline_repairs_invalid_options_once_and_merges_quality_checks() -> No
     assert candidate.item_id.startswith("live-sociability-")
     check_ids = {check.check_id for check in candidate.quality_checks}
     assert "OPTION_COUNT" in check_ids
-    assert "MODEL_AGE_FIT" in check_ids
+    assert set(REQUIRED_QUALITY_IDS).issubset(check_ids)
 
 
 def test_pipeline_repairs_model_check_id_collision_before_merge() -> None:
@@ -213,7 +237,7 @@ def test_pipeline_repairs_model_check_id_collision_before_merge() -> None:
             construct_payload(),
             blueprint_payload(),
             options_payload(),
-            quality_payload("PROVENANCE"),
+            quality_payload(extra_ids=("PROVENANCE",)),
             quality_payload(),
         ]
     )
@@ -227,8 +251,77 @@ def test_pipeline_repairs_model_check_id_collision_before_merge() -> None:
     assert len(client.calls) == 5
     assert len(check_ids) == len(set(check_ids))
     assert check_ids.count("PROVENANCE") == 1
-    assert "MODEL_AGE_FIT" in check_ids
+    assert set(REQUIRED_QUALITY_IDS).issubset(check_ids)
     assert "reserved" in client.calls[4][1].lower()
+
+
+def test_pipeline_repairs_missing_required_quality_dimension_once() -> None:
+    client = QueueClient(
+        [
+            construct_payload(),
+            blueprint_payload(),
+            options_payload(),
+            quality_payload(missing=("SAFETY",)),
+            quality_payload(),
+        ]
+    )
+    pipeline = GenerationPipeline(client)
+
+    candidate = pipeline.generate_candidate(
+        project_config(), "bfi2-sociability-01", "club"
+    )
+
+    assert len(client.calls) == 5
+    assert "SAFETY" in client.calls[4][1]
+    assert set(REQUIRED_QUALITY_IDS).issubset(
+        {check.check_id for check in candidate.quality_checks}
+    )
+
+
+def test_pipeline_repairs_required_quality_id_with_surrounding_whitespace() -> None:
+    malformed = quality_payload()
+    malformed["checks"][0]["check_id"] = " AGE_FIT "  # type: ignore[index]
+    client = QueueClient(
+        [
+            construct_payload(),
+            blueprint_payload(),
+            options_payload(),
+            malformed,
+            quality_payload(),
+        ]
+    )
+    pipeline = GenerationPipeline(client)
+
+    candidate = pipeline.generate_candidate(
+        project_config(), "bfi2-sociability-01", "club"
+    )
+
+    assert len(client.calls) == 5
+    assert {check.check_id for check in candidate.quality_checks}.issuperset(
+        REQUIRED_QUALITY_IDS
+    )
+
+
+def test_pipeline_rejects_second_quality_response_missing_required_dimension() -> None:
+    client = QueueClient(
+        [
+            construct_payload(),
+            blueprint_payload(),
+            options_payload(),
+            quality_payload(missing=("SAFETY",)),
+            quality_payload(missing=("SAFETY",)),
+        ]
+    )
+    pipeline = GenerationPipeline(client)
+
+    with pytest.raises(GenerationStageError) as captured:
+        pipeline.generate_candidate(
+            project_config(), "bfi2-sociability-01", "club"
+        )
+
+    assert captured.value.stage == "quality"
+    assert len(client.calls) == 5
+    assert "candidate" in captured.value.partial_results
 
 
 def test_pipeline_stops_after_second_stage_validation_failure() -> None:

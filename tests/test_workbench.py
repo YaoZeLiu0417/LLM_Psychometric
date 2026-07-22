@@ -1,4 +1,5 @@
 from copy import deepcopy
+from threading import Event, Thread
 
 import pytest
 
@@ -240,6 +241,111 @@ def test_save_generated_item_adds_selects_validated_snapshot_and_persists(tmp_pa
     assert saved.selected_item_id == generated.item_id
     assert saved.items[generated.item_id] == generated
     assert repository.load(project.config.project_id) == saved
+
+
+def test_save_generated_item_rejects_existing_id_without_losing_review_history(
+    tmp_path,
+) -> None:
+    service, repository, project = service_with_seed(tmp_path)
+    source = next(iter(project.items.values()))
+    reviewed_project = review(
+        service,
+        project.config.project_id,
+        source,
+        stem="已经完成一次人工修改的题干",
+    )
+    reviewed = reviewed_project.items[source.item_id]
+    colliding_generated = CandidateItem.model_validate(
+        {
+            **source.model_dump(mode="python"),
+            "generation_mode": GenerationMode.LIVE,
+            "model_id": "fake-model",
+        }
+    )
+
+    with pytest.raises(ValueError, match="already exists"):
+        service.save_generated_item(
+            project.config.project_id,
+            colliding_generated,
+        )
+
+    reloaded = repository.load(project.config.project_id)
+    assert reloaded == reviewed_project
+    assert reloaded.items[source.item_id].review_versions == reviewed.review_versions
+
+
+def test_review_transaction_is_serialized_across_service_instances(tmp_path) -> None:
+    root = tmp_path / "projects"
+    repository_one = JsonProjectRepository(root)
+    repository_two = JsonProjectRepository(root.resolve())
+    project = build_demo_project()
+    repository_one.save(project)
+    item = next(iter(project.items.values()))
+    service_one = WorkbenchService(repository_one)
+    service_two = WorkbenchService(repository_two)
+    first_loaded = Event()
+    release_first = Event()
+    second_entered_load = Event()
+    real_first_load = repository_one.load
+    real_second_load = repository_two.load
+    failures: list[BaseException] = []
+
+    def slow_first_load(project_id: str):
+        loaded = real_first_load(project_id)
+        first_loaded.set()
+        if not release_first.wait(timeout=5):
+            raise TimeoutError("test did not release the first transaction")
+        return loaded
+
+    def observed_second_load(project_id: str):
+        second_entered_load.set()
+        return real_second_load(project_id)
+
+    repository_one.load = slow_first_load  # type: ignore[method-assign]
+    repository_two.load = observed_second_load  # type: ignore[method-assign]
+
+    def edit(service: WorkbenchService, stem: str, note: str) -> None:
+        try:
+            service.review_item(
+                project.config.project_id,
+                item.item_id,
+                stem,
+                item.options,
+                "thread-reviewer",
+                ReviewAction.EDIT,
+                note,
+            )
+        except BaseException as exc:
+            failures.append(exc)
+
+    first_thread = Thread(
+        target=edit,
+        args=(service_one, "第一个线程修改后的题干", "first"),
+    )
+    second_thread = Thread(
+        target=edit,
+        args=(service_two, "第二个线程修改后的题干", "second"),
+    )
+    first_thread.start()
+    assert first_loaded.wait(timeout=5)
+    second_thread.start()
+    second_entered_before_release = second_entered_load.wait(timeout=0.2)
+    release_first.set()
+    first_thread.join(timeout=5)
+    second_thread.join(timeout=5)
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert failures == []
+    assert not second_entered_before_release
+    restored = repository_one.load(project.config.project_id)
+    restored_item = restored.items[item.item_id]
+    assert [version.version for version in restored_item.review_versions] == [1, 2]
+    assert [version.note for version in restored_item.review_versions] == [
+        "first",
+        "second",
+    ]
+    assert restored_item.stem_zh == "第二个线程修改后的题干"
 
 
 def test_save_generated_item_rejects_invalid_or_mismatched_input(tmp_path) -> None:

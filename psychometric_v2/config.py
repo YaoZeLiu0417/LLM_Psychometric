@@ -14,7 +14,7 @@ FONT_ASSET = (
     / "psychometric_v2"
     / "assets"
     / "fonts"
-    / "SourceSans3-VariableFont_wght.ttf"
+    / "SourceSans3-Variable.ttf"
 )
 WORKSPACE_ROOT = ROOT / "workspace_data"
 

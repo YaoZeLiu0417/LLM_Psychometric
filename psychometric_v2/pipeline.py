@@ -28,6 +28,7 @@ from psychometric_v2.models import (
     ScenarioBlueprint,
 )
 from psychometric_v2.prompts import (
+    REQUIRED_QUALITY_CHECK_IDS,
     blueprint_prompt,
     construct_prompt,
     options_prompt,
@@ -147,10 +148,21 @@ class _QualityResponse(_StageModel):
     ) -> tuple[QualityCheck, ...]:
         if not checks:
             raise ValueError("checks must not be empty")
-        ids = [check.check_id.strip() for check in checks]
+        raw_ids = [check.check_id for check in checks]
+        ids = [check_id.strip() for check_id in raw_ids]
         if any(not check_id for check_id in ids) or len(set(ids)) != len(ids):
             raise ValueError("quality check IDs must be nonblank and unique")
-        reserved_ids = set((info.context or {}).get("reserved_check_ids", ()))
+        if raw_ids != ids:
+            raise ValueError(
+                "quality check IDs must not contain surrounding whitespace"
+            )
+        context = info.context or {}
+        required_ids = set(context.get("required_check_ids", ()))
+        missing_ids = required_ids.difference(ids)
+        if missing_ids:
+            missing = ", ".join(sorted(missing_ids))
+            raise ValueError(f"missing required model quality check IDs: {missing}")
+        reserved_ids = set(context.get("reserved_check_ids", ()))
         if reserved_ids.intersection(ids):
             raise ValueError(
                 "model quality check IDs must not use reserved deterministic IDs"
@@ -302,7 +314,10 @@ class GenerationPipeline:
             "quality",
             quality_prompt(item, config),
             _QualityResponse,
-            validation_context={"reserved_check_ids": deterministic_ids},
+            validation_context={
+                "required_check_ids": REQUIRED_QUALITY_CHECK_IDS,
+                "reserved_check_ids": deterministic_ids,
+            },
         )
         return parsed.checks
 

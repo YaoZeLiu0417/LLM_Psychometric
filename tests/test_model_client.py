@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from psychometric_v2.config import LiveModelConfig
+from psychometric_v2.config import FONT_ASSET, LiveModelConfig
 from psychometric_v2.model_client import (
     ModelOutputError,
     ModelTimeout,
@@ -46,6 +46,15 @@ def config(**changes: object) -> LiveModelConfig:
     }
     values.update(changes)
     return LiveModelConfig(**values)
+
+
+def test_font_asset_points_to_task6_source_sans_variable_font() -> None:
+    assert FONT_ASSET.name == "SourceSans3-Variable.ttf"
+    assert FONT_ASSET.parts[-3:] == (
+        "assets",
+        "fonts",
+        "SourceSans3-Variable.ttf",
+    )
 
 
 def test_from_env_requires_key_and_model_without_disclosing_values(

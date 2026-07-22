@@ -89,6 +89,17 @@ def test_discovery_uses_shortest_path_then_lexical_order(tmp_path: Path) -> None
     assert legacy_module().discover_legacy_anchor_file(tmp_path) == lexical_first
 
 
+def test_discovery_compares_full_path_string_length_before_lexical_order(
+    tmp_path: Path,
+) -> None:
+    rows = make_legacy_rows()
+    shorter = tmp_path / "z.jsonl"
+    write_jsonl(tmp_path / "aa.jsonl", rows)
+    write_jsonl(shorter, rows)
+
+    assert legacy_module().discover_legacy_anchor_file(tmp_path) == shorter
+
+
 def test_discovery_raises_exact_error_when_no_candidate_exists(tmp_path: Path) -> None:
     write_jsonl(tmp_path / "only-59.jsonl", make_legacy_rows()[:-1])
 

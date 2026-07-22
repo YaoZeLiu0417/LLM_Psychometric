@@ -31,8 +31,8 @@ def discover_legacy_anchor_file(root: str | Path) -> Path:
         raise FileNotFoundError("no 60-item legacy Big Five JSONL was found")
 
     def sort_key(path: Path) -> tuple[bool, int, str]:
-        relative = path.relative_to(root_path)
-        return path.parent.name != "data", len(relative.parts), relative.as_posix()
+        path_string = str(path)
+        return path.parent.name != "data", len(path_string), path_string
 
     return min(candidates, key=sort_key)
 

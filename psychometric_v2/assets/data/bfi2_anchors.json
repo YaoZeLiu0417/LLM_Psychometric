@@ -1,0 +1,602 @@
+[
+  {
+    "anchor_id": "bfi2-sociability-01",
+    "item_number": 1,
+    "text_zh": "我是一个性格外向，喜欢交际的人。",
+    "legacy_feature": "外向性、社交",
+    "domain_id": "extraversion",
+    "facet_id": "sociability",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-compassion-01",
+    "item_number": 2,
+    "text_zh": "我是一个心肠柔软，有同情心的人。",
+    "legacy_feature": "宜人性、同情",
+    "domain_id": "agreeableness",
+    "facet_id": "compassion",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-organization-01",
+    "item_number": 3,
+    "text_zh": "我是一个缺乏条理的人。",
+    "legacy_feature": "尽责性、条理",
+    "domain_id": "conscientiousness",
+    "facet_id": "organization",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-anxiety-01",
+    "item_number": 4,
+    "text_zh": "我是一个从容，善于处理压力的人。",
+    "legacy_feature": "神经质、焦虑",
+    "domain_id": "negative_emotionality",
+    "facet_id": "anxiety",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-aesthetic_sensitivity-01",
+    "item_number": 5,
+    "text_zh": "我是一个对艺术没有什么兴趣的人。",
+    "legacy_feature": "开放性、审美",
+    "domain_id": "open_mindedness",
+    "facet_id": "aesthetic_sensitivity",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-assertiveness-01",
+    "item_number": 6,
+    "text_zh": "我是一个性格坚定自信，敢于表达自己观点的人。",
+    "legacy_feature": "外向性、果断",
+    "domain_id": "extraversion",
+    "facet_id": "assertiveness",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-respectfulness-01",
+    "item_number": 7,
+    "text_zh": "我是一个为人恭谦，尊重他人的人。",
+    "legacy_feature": "宜人性、谦恭",
+    "domain_id": "agreeableness",
+    "facet_id": "respectfulness",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-productiveness-01",
+    "item_number": 8,
+    "text_zh": "我是一个比较懒的人。",
+    "legacy_feature": "尽责性、效率",
+    "domain_id": "conscientiousness",
+    "facet_id": "productiveness",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-depression-01",
+    "item_number": 9,
+    "text_zh": "我是一个经历挫折后仍能保持积极心态的人。",
+    "legacy_feature": "神经质、抑郁",
+    "domain_id": "negative_emotionality",
+    "facet_id": "depression",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-intellectual_curiosity-01",
+    "item_number": 10,
+    "text_zh": "我是一个对许多不同事物都感兴趣的人。",
+    "legacy_feature": "开放性、好奇",
+    "domain_id": "open_mindedness",
+    "facet_id": "intellectual_curiosity",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-energy_level-01",
+    "item_number": 11,
+    "text_zh": "我是一个很少觉得兴奋或者特别想要(做)什么的人。",
+    "legacy_feature": "外向性、活力",
+    "domain_id": "extraversion",
+    "facet_id": "energy_level",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-trust-01",
+    "item_number": 12,
+    "text_zh": "我是一个常常挑别人毛病的人。",
+    "legacy_feature": "宜人性、信任",
+    "domain_id": "agreeableness",
+    "facet_id": "trust",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-responsibility-01",
+    "item_number": 13,
+    "text_zh": "我是一个可信赖的，可靠的人。",
+    "legacy_feature": "尽责性、负责",
+    "domain_id": "conscientiousness",
+    "facet_id": "responsibility",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-emotional_volatility-01",
+    "item_number": 14,
+    "text_zh": "我是一个喜怒无常，情绪起伏较多的人。",
+    "legacy_feature": "神经质、易变",
+    "domain_id": "negative_emotionality",
+    "facet_id": "emotional_volatility",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-creative_imagination-01",
+    "item_number": 15,
+    "text_zh": "我是一个善于创造，能找到聪明方法做事的人。",
+    "legacy_feature": "开放性、想象",
+    "domain_id": "open_mindedness",
+    "facet_id": "creative_imagination",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-sociability-02",
+    "item_number": 16,
+    "text_zh": "我是一个比较安静的人。",
+    "legacy_feature": "外向性、社交",
+    "domain_id": "extraversion",
+    "facet_id": "sociability",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-compassion-02",
+    "item_number": 17,
+    "text_zh": "我是一个对他人没有什么同情心的人。",
+    "legacy_feature": "宜人性、同情",
+    "domain_id": "agreeableness",
+    "facet_id": "compassion",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-organization-02",
+    "item_number": 18,
+    "text_zh": "我是一个做事有计划有条理的人。",
+    "legacy_feature": "尽责性、条理",
+    "domain_id": "conscientiousness",
+    "facet_id": "organization",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-anxiety-02",
+    "item_number": 19,
+    "text_zh": "我是一个容易紧张的人。",
+    "legacy_feature": "神经质、焦虑",
+    "domain_id": "negative_emotionality",
+    "facet_id": "anxiety",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-aesthetic_sensitivity-02",
+    "item_number": 20,
+    "text_zh": "我是一个着迷于艺术、音乐或文学的人。",
+    "legacy_feature": "开放性、审美",
+    "domain_id": "open_mindedness",
+    "facet_id": "aesthetic_sensitivity",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-assertiveness-02",
+    "item_number": 21,
+    "text_zh": "我是一个常常处于主导地位，像个领导一样的人。",
+    "legacy_feature": "外向性、果断",
+    "domain_id": "extraversion",
+    "facet_id": "assertiveness",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-respectfulness-02",
+    "item_number": 22,
+    "text_zh": "我是一个常与他人意见不和的人。",
+    "legacy_feature": "宜人性、谦恭",
+    "domain_id": "agreeableness",
+    "facet_id": "respectfulness",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-productiveness-02",
+    "item_number": 23,
+    "text_zh": "我是一个很难开始行动去完成任务的人。",
+    "legacy_feature": "尽责性、效率",
+    "domain_id": "conscientiousness",
+    "facet_id": "productiveness",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-depression-02",
+    "item_number": 24,
+    "text_zh": "我是一个觉得有安全感，对自己满意的人。",
+    "legacy_feature": "神经质、抑郁",
+    "domain_id": "negative_emotionality",
+    "facet_id": "depression",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-intellectual_curiosity-02",
+    "item_number": 25,
+    "text_zh": "我是一个不喜欢知识性或者哲学性强的讨论的人。",
+    "legacy_feature": "开放性、好奇",
+    "domain_id": "open_mindedness",
+    "facet_id": "intellectual_curiosity",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-energy_level-02",
+    "item_number": 26,
+    "text_zh": "我是一个不如别人有活力的人。",
+    "legacy_feature": "外向性、活力",
+    "domain_id": "extraversion",
+    "facet_id": "energy_level",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-trust-02",
+    "item_number": 27,
+    "text_zh": "我是一个宽宏大量的人。",
+    "legacy_feature": "宜人性、信任",
+    "domain_id": "agreeableness",
+    "facet_id": "trust",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-responsibility-02",
+    "item_number": 28,
+    "text_zh": "我是一个有时比较没有责任心的人。",
+    "legacy_feature": "尽责性、负责",
+    "domain_id": "conscientiousness",
+    "facet_id": "responsibility",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-emotional_volatility-02",
+    "item_number": 29,
+    "text_zh": "我是一个情绪稳定，不易生气的人。",
+    "legacy_feature": "神经质、易变",
+    "domain_id": "negative_emotionality",
+    "facet_id": "emotional_volatility",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-creative_imagination-02",
+    "item_number": 30,
+    "text_zh": "我是一个几乎没有什么创造性的人。",
+    "legacy_feature": "开放性、想象",
+    "domain_id": "open_mindedness",
+    "facet_id": "creative_imagination",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-sociability-03",
+    "item_number": 31,
+    "text_zh": "我是一个有时会害羞，比较内向的人。",
+    "legacy_feature": "外向性、社交",
+    "domain_id": "extraversion",
+    "facet_id": "sociability",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-compassion-03",
+    "item_number": 32,
+    "text_zh": "我是一个乐于助人，待人无私的人。",
+    "legacy_feature": "宜人性、同情",
+    "domain_id": "agreeableness",
+    "facet_id": "compassion",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-organization-03",
+    "item_number": 33,
+    "text_zh": "我是一个习惯让事物保持整洁有序的人。",
+    "legacy_feature": "尽责性、条理",
+    "domain_id": "conscientiousness",
+    "facet_id": "organization",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-anxiety-03",
+    "item_number": 34,
+    "text_zh": "我是一个时常忧心忡忡，担心很多事情的人。",
+    "legacy_feature": "神经质、焦虑",
+    "domain_id": "negative_emotionality",
+    "facet_id": "anxiety",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-aesthetic_sensitivity-03",
+    "item_number": 35,
+    "text_zh": "我是一个重视艺术与审美的人。",
+    "legacy_feature": "开放性、审美",
+    "domain_id": "open_mindedness",
+    "facet_id": "aesthetic_sensitivity",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-assertiveness-03",
+    "item_number": 36,
+    "text_zh": "我是一个感觉自己很难对他人产生影响的人。",
+    "legacy_feature": "外向性、果断",
+    "domain_id": "extraversion",
+    "facet_id": "assertiveness",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-respectfulness-03",
+    "item_number": 37,
+    "text_zh": "我是一个有时对人比较粗鲁的人。",
+    "legacy_feature": "宜人性、谦恭",
+    "domain_id": "agreeableness",
+    "facet_id": "respectfulness",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-productiveness-03",
+    "item_number": 38,
+    "text_zh": "我是一个有效率，做事有始有终的人。",
+    "legacy_feature": "尽责性、效率",
+    "domain_id": "conscientiousness",
+    "facet_id": "productiveness",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-depression-03",
+    "item_number": 39,
+    "text_zh": "我是一个时常觉得悲伤的人。",
+    "legacy_feature": "神经质、抑郁",
+    "domain_id": "negative_emotionality",
+    "facet_id": "depression",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-intellectual_curiosity-03",
+    "item_number": 40,
+    "text_zh": "我是一个思想深刻的人。",
+    "legacy_feature": "开放性、好奇",
+    "domain_id": "open_mindedness",
+    "facet_id": "intellectual_curiosity",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-energy_level-03",
+    "item_number": 41,
+    "text_zh": "我是一个精力充沛的人。",
+    "legacy_feature": "外向性、活力",
+    "domain_id": "extraversion",
+    "facet_id": "energy_level",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-trust-03",
+    "item_number": 42,
+    "text_zh": "我是一个不相信别人，怀疑别人意图的人。",
+    "legacy_feature": "宜人性、信任",
+    "domain_id": "agreeableness",
+    "facet_id": "trust",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-responsibility-03",
+    "item_number": 43,
+    "text_zh": "我是一个可靠的，总是值得他人信赖的人。",
+    "legacy_feature": "尽责性、负责",
+    "domain_id": "conscientiousness",
+    "facet_id": "responsibility",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-emotional_volatility-03",
+    "item_number": 44,
+    "text_zh": "我是一个能够控制自己情绪的人。",
+    "legacy_feature": "神经质、易变",
+    "domain_id": "negative_emotionality",
+    "facet_id": "emotional_volatility",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-creative_imagination-03",
+    "item_number": 45,
+    "text_zh": "我是一个缺乏想象力的人。",
+    "legacy_feature": "开放性、想象",
+    "domain_id": "open_mindedness",
+    "facet_id": "creative_imagination",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-sociability-04",
+    "item_number": 46,
+    "text_zh": "我是一个爱说话，健谈的人。",
+    "legacy_feature": "外向性、社交",
+    "domain_id": "extraversion",
+    "facet_id": "sociability",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-compassion-04",
+    "item_number": 47,
+    "text_zh": "我是一个有时对人冷淡，漠不关心的人。",
+    "legacy_feature": "宜人性、同情",
+    "domain_id": "agreeableness",
+    "facet_id": "compassion",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-organization-04",
+    "item_number": 48,
+    "text_zh": "我是一个乱糟糟的，不爱收拾的人。",
+    "legacy_feature": "尽责性、条理",
+    "domain_id": "conscientiousness",
+    "facet_id": "organization",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-anxiety-04",
+    "item_number": 49,
+    "text_zh": "我是一个很少觉得焦虑或者害怕的人。",
+    "legacy_feature": "神经质、焦虑",
+    "domain_id": "negative_emotionality",
+    "facet_id": "anxiety",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-aesthetic_sensitivity-04",
+    "item_number": 50,
+    "text_zh": "我是一个觉得诗歌、戏剧很无聊的人。",
+    "legacy_feature": "开放性、审美",
+    "domain_id": "open_mindedness",
+    "facet_id": "aesthetic_sensitivity",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-assertiveness-04",
+    "item_number": 51,
+    "text_zh": "我是一个更喜欢让别人来领头负责的人。",
+    "legacy_feature": "外向性、果断",
+    "domain_id": "extraversion",
+    "facet_id": "assertiveness",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-respectfulness-04",
+    "item_number": 52,
+    "text_zh": "我是一个待人谦逊礼让的人。",
+    "legacy_feature": "宜人性、谦恭",
+    "domain_id": "agreeableness",
+    "facet_id": "respectfulness",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-productiveness-04",
+    "item_number": 53,
+    "text_zh": "我是一个有恒心，能坚持把事情做完的人。",
+    "legacy_feature": "尽责性、效率",
+    "domain_id": "conscientiousness",
+    "facet_id": "productiveness",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-depression-04",
+    "item_number": 54,
+    "text_zh": "我是一个时常觉得郁郁寡欢的人。",
+    "legacy_feature": "神经质、抑郁",
+    "domain_id": "negative_emotionality",
+    "facet_id": "depression",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-intellectual_curiosity-04",
+    "item_number": 55,
+    "text_zh": "我是一个对抽象的概念和想法没什么兴趣的人。",
+    "legacy_feature": "开放性、好奇",
+    "domain_id": "open_mindedness",
+    "facet_id": "intellectual_curiosity",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-energy_level-04",
+    "item_number": 56,
+    "text_zh": "我是一个充满热情的人。",
+    "legacy_feature": "外向性、活力",
+    "domain_id": "extraversion",
+    "facet_id": "energy_level",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-trust-04",
+    "item_number": 57,
+    "text_zh": "我是一个把人往最好的方面想的人。",
+    "legacy_feature": "宜人性、信任",
+    "domain_id": "agreeableness",
+    "facet_id": "trust",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-responsibility-04",
+    "item_number": 58,
+    "text_zh": "我是一个有时候会做出不负责任行为的人。",
+    "legacy_feature": "尽责性、负责",
+    "domain_id": "conscientiousness",
+    "facet_id": "responsibility",
+    "reverse": true,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-emotional_volatility-04",
+    "item_number": 59,
+    "text_zh": "我是一个情绪多变，容易愤怒的人。",
+    "legacy_feature": "神经质、易变",
+    "domain_id": "negative_emotionality",
+    "facet_id": "emotional_volatility",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  },
+  {
+    "anchor_id": "bfi2-creative_imagination-04",
+    "item_number": 60,
+    "text_zh": "我是一个有创意，能想出新点子的人。",
+    "legacy_feature": "开放性、想象",
+    "domain_id": "open_mindedness",
+    "facet_id": "creative_imagination",
+    "reverse": false,
+    "source": "legacy_big_five_60"
+  }
+]

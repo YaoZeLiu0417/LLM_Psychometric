@@ -236,6 +236,23 @@ def test_live_button_follows_environment_without_calling_a_model(monkeypatch) ->
     assert not available.exception
     assert "CURATED SEED" not in _markdown(available)
 
+    available.get("button_group")[0].set_value(["REVIEW"]).run()
+    assert not available.exception
+    assert available.session_state["v2_generation_mode"] == "LIVE GENERATION"
+    review_text = _markdown(available)
+    assert '<span class="mode-badge">CURATED DEMO</span>' in review_text
+    assert '<span class="mode-badge">LIVE GENERATION</span>' not in review_text
+    assert "CURATED SEED" in review_text
+    assert "REVIEW QUEUE" in review_text
+
+    available.get("button_group")[0].set_value(["GENERATION STUDIO"]).run()
+    assert not available.exception
+    assert available.session_state["v2_generation_mode"] == "LIVE GENERATION"
+    resumed_text = _markdown(available)
+    assert '<span class="mode-badge">LIVE GENERATION</span>' in resumed_text
+    assert "LIVE WORKSPACE READY" in resumed_text
+    assert "CURATED SEED" not in resumed_text
+
     available.button[0].click().run()
     assert not available.exception
     assert available.session_state["v2_generation_mode"] == "CURATED DEMO"
@@ -243,3 +260,34 @@ def test_live_button_follows_environment_without_calling_a_model(monkeypatch) ->
     assert '<span class="mode-badge">CURATED DEMO</span>' in curated_text
     assert "CURATED SEED" in curated_text
     assert "PROVENANCE" in curated_text
+
+
+def test_review_header_uses_selected_live_item_generation_mode() -> None:
+    app = AppTest.from_string(
+        """
+import streamlit as st
+
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.models import GenerationMode
+from psychometric_v2.ui.components import render_header
+
+project = build_demo_project()
+base = project.items[project.selected_item_id]
+live_item = base.validated_update(
+    item_id="live-review-candidate",
+    generation_mode=GenerationMode.LIVE,
+    model_id="fake-live-model",
+)
+live_project = project.validated_update(
+    items={**dict(project.items), live_item.item_id: live_item},
+    selected_item_id=live_item.item_id,
+)
+st.session_state["v2_active_page"] = "REVIEW"
+render_header(live_project, live_available=True)
+        """
+    ).run()
+
+    assert not app.exception
+    markdown = _markdown(app)
+    assert '<span class="mode-badge">LIVE GENERATION</span>' in markdown
+    assert '<span class="mode-badge">CURATED DEMO</span>' not in markdown

@@ -39,8 +39,26 @@ def _e(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
+def _effective_page() -> str:
+    navigation = st.session_state.get("v2_navigation")
+    if isinstance(navigation, (list, tuple)):
+        navigation = navigation[-1] if navigation else None
+    if navigation in PAGES:
+        return str(navigation)
+    active_page = st.session_state.get("v2_active_page", PAGES[0])
+    return str(active_page) if active_page in PAGES else PAGES[0]
+
+
+def _effective_mode(project: ResearchProject, page: str) -> str:
+    if page == "GENERATION STUDIO":
+        return str(st.session_state.get("v2_generation_mode", "CURATED DEMO"))
+    if page in {"REVIEW", "PARTICIPANT VIEW"}:
+        return selected_item(project).generation_mode.value
+    return "CURATED DEMO"
+
+
 def render_header(project: ResearchProject, *, live_available: bool) -> None:
-    mode = _e(st.session_state.get("v2_generation_mode", "CURATED DEMO"))
+    mode = _e(_effective_mode(project, _effective_page()))
     availability = "LIVE AVAILABLE" if live_available else "LIVE UNAVAILABLE"
     st.markdown(
         f"""
@@ -77,6 +95,8 @@ def render_navigation() -> str:
     if selected in PAGES:
         selected_page = str(selected)
         st.session_state["v2_active_page"] = selected_page
+        if selected_page != active_page:
+            st.rerun()
         return selected_page
     return active_page
 

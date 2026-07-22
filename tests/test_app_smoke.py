@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
 from psychometric_v2.demo_seed import build_demo_project
@@ -55,6 +56,23 @@ def _button(app: AppTest, label: str):
 
 def _widget_with_key(widgets, key: str):
     return next(widget for widget in widgets if widget.key == key)
+
+
+def _install_successful_live_pipeline(monkeypatch, candidate) -> None:
+    class SuccessfulPipeline:
+        def __init__(self, _client) -> None:
+            pass
+
+        def generate_candidate(self, _config, _anchor, _context):
+            return candidate
+
+    monkeypatch.setattr(
+        generation.LiveModelConfig,
+        "from_env",
+        staticmethod(lambda: object()),
+    )
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", lambda _config: object())
+    monkeypatch.setattr(generation, "GenerationPipeline", SuccessfulPipeline)
 
 
 def test_app_starts_without_live_model_configuration(monkeypatch) -> None:
@@ -313,6 +331,173 @@ def test_generation_provenance_inspector_lists_all_options_and_checks() -> None:
         assert check.severity.value in markdown
         assert check.evidence in markdown
         assert (check.recommendation or "No change recommended.") in markdown
+
+
+def test_live_success_commits_session_only_after_persistence(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
+    monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    generated = seed.validated_update(
+        item_id="live-sociability-saved",
+        generation_mode=GenerationMode.LIVE,
+        model_id="fake-app-test-model",
+    )
+    _install_successful_live_pipeline(monkeypatch, generated)
+    observed: dict[str, object] = {}
+
+    def successful_save(_service, _project_id, _candidate):
+        observed["candidate"] = generation.st.session_state.get("v2_candidate_item")
+        observed["selected"] = generation.st.session_state.get("v2_selected_item")
+        observed["statuses"] = dict(
+            generation.st.session_state.get("v2_stage_status", {})
+        )
+
+    monkeypatch.setattr(
+        generation.WorkbenchService,
+        "save_generated_item",
+        successful_save,
+    )
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    app.session_state["v2_generation_mode"] = "LIVE GENERATION"
+    app.session_state["v2_candidate_item"] = seed
+    app.session_state["v2_selected_item"] = seed.item_id
+    app.session_state["v2_stage_status"] = {
+        stage: "CURATED"
+        for stage in (
+            "CONSTRUCT SPECIFICATION",
+            "SCENARIO BLUEPRINT",
+            "RESPONSE OPTIONS",
+            "QUALITY CHECKS",
+        )
+    }
+    app.run()
+
+    _button(app, "GENERATE").click().run()
+
+    assert not app.exception
+    assert observed["candidate"].item_id == seed.item_id
+    assert observed["selected"] == seed.item_id
+    assert set(observed["statuses"].values()) == {"CURATED"}
+    assert app.session_state["v2_candidate_item"].item_id == generated.item_id
+    assert app.session_state["v2_selected_item"] == generated.item_id
+    assert set(app.session_state["v2_stage_status"].values()) == {"COMPLETE"}
+
+
+@pytest.mark.parametrize("persistence_error", (ValueError, KeyError, OSError))
+def test_live_persistence_failure_restores_session_and_is_public(
+    monkeypatch,
+    persistence_error,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
+    monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    generated = seed.validated_update(
+        item_id="live-sociability-not-saved",
+        generation_mode=GenerationMode.LIVE,
+        model_id="fake-app-test-model",
+    )
+    _install_successful_live_pipeline(monkeypatch, generated)
+
+    def failed_save(_service, _project_id, _candidate):
+        raise persistence_error("SECRET C:\\private\\project.json")
+
+    monkeypatch.setattr(
+        generation.WorkbenchService,
+        "save_generated_item",
+        failed_save,
+    )
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    app.session_state["v2_generation_mode"] = "LIVE GENERATION"
+    app.session_state["v2_candidate_item"] = seed
+    app.session_state["v2_selected_item"] = seed.item_id
+    app.session_state["v2_stage_status"] = {
+        stage: "CURATED"
+        for stage in (
+            "CONSTRUCT SPECIFICATION",
+            "SCENARIO BLUEPRINT",
+            "RESPONSE OPTIONS",
+            "QUALITY CHECKS",
+        )
+    }
+    app.run()
+
+    _button(app, "GENERATE").click().run()
+
+    assert not app.exception
+    assert app.error[0].value == "Generated item could not be saved."
+    assert "SECRET" not in _markdown(app)
+    assert "private" not in _markdown(app)
+    assert app.session_state["v2_candidate_item"].item_id == seed.item_id
+    assert app.session_state["v2_selected_item"] == seed.item_id
+    assert app.session_state["v2_generation_options"].item_id == generated.item_id
+    assert app.session_state["v2_stage_status"]["QUALITY CHECKS"] == "NOT SAVED"
+    assert set(app.session_state["v2_stage_status"].values()) != {"COMPLETE"}
+
+    app.run()
+    assert not app.exception
+    assert app.error[0].value == "Generated item could not be saved."
+    assert app.session_state["v2_candidate_item"].item_id == seed.item_id
+    assert app.session_state["v2_selected_item"] == seed.item_id
+
+
+def test_generation_uses_latest_persisted_curated_item(tmp_path) -> None:
+    repository_root = tmp_path / "projects"
+    app = AppTest.from_string(
+        f"""
+import streamlit as st
+from pathlib import Path
+
+from psychometric_v2.config import ANCHOR_ASSET
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.legacy import load_anchor_asset
+from psychometric_v2.models import ReviewAction
+from psychometric_v2.repository import JsonProjectRepository
+from psychometric_v2.ui.pages.generation import render
+from psychometric_v2.ui.state import init_state
+from psychometric_v2.workbench import WorkbenchService
+
+repository = JsonProjectRepository(Path({str(repository_root)!r}))
+project = repository.ensure_seed(build_demo_project())
+service = WorkbenchService(repository)
+item = project.items["demo-extraversion-sociability"]
+if not item.review_versions:
+    options = tuple(
+        option.validated_update(
+            text_zh="PERSISTED REVIEW OPTION" if index == 0 else option.text_zh
+        )
+        for index, option in enumerate(item.options)
+    )
+    project = service.review_item(
+        project.config.project_id,
+        item.item_id,
+        "PERSISTED REVIEW STEM",
+        options,
+        "reviewer-a",
+        ReviewAction.APPROVE,
+        "persisted review note",
+    )
+init_state()
+st.session_state["v2_active_stage"] = "RESPONSE OPTIONS"
+render(project, load_anchor_asset(ANCHOR_ASSET), service)
+        """,
+        default_timeout=10,
+    ).run()
+
+    assert not app.exception
+    markdown = _markdown(app)
+    assert "PERSISTED REVIEW STEM" in markdown
+    assert "PERSISTED REVIEW OPTION" in markdown
+    assert "HUMAN_REVIEWED" in markdown
+
+    _button(app, "LOAD CURATED EXAMPLE").click().run()
+    assert not app.exception
+    loaded = app.session_state["v2_candidate_item"]
+    assert loaded.stem_zh == "PERSISTED REVIEW STEM"
+    assert loaded.options[0].text_zh == "PERSISTED REVIEW OPTION"
+    assert loaded.evidence_status.value == "HUMAN_REVIEWED"
+    assert len(loaded.review_versions) == 1
 
 
 def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch) -> None:

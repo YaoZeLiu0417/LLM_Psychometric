@@ -6,7 +6,6 @@ import os
 import streamlit as st
 
 from psychometric_v2.config import LiveModelConfig, ModelUnavailable
-from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.model_client import OpenAICompatibleClient
 from psychometric_v2.models import (
     CandidateItem,
@@ -41,20 +40,29 @@ def _live_environment_present() -> bool:
     )
 
 
-def _facet_seed(domain_id: str, facet_id: str) -> CandidateItem | None:
-    for item in build_demo_project().items.values():
-        if item.domain_id == domain_id and item.facet_id == facet_id:
+def _facet_seed(
+    project: ResearchProject,
+    domain_id: str,
+    facet_id: str,
+) -> CandidateItem | None:
+    for item in project.items.values():
+        if (
+            item.generation_mode is GenerationMode.CURATED
+            and item.domain_id == domain_id
+            and item.facet_id == facet_id
+        ):
             return item
     return None
 
 
 def _matching_seed(
+    project: ResearchProject,
     domain_id: str,
     facet_id: str,
     anchor_id: str,
     context_domain: str,
 ) -> CandidateItem | None:
-    item = _facet_seed(domain_id, facet_id)
+    item = _facet_seed(project, domain_id, facet_id)
     if item is None or item.scenario_blueprint is None:
         return None
     if item.anchor_ids != (anchor_id,):
@@ -335,7 +343,7 @@ def render(
         != taxonomy_selection
     )
     st.session_state["v2_generation_taxonomy_selection"] = taxonomy_selection
-    default_curated = _facet_seed(domain_id, facet_id)
+    default_curated = _facet_seed(project, domain_id, facet_id)
     context_domains = tuple(project.config.context_domains)
     if (
         taxonomy_changed
@@ -376,7 +384,13 @@ def render(
             key="v2_selected_anchor",
         )
 
-    curated = _matching_seed(domain_id, facet_id, anchor_id, context_domain)
+    curated = _matching_seed(
+        project,
+        domain_id,
+        facet_id,
+        anchor_id,
+        context_domain,
+    )
     live_ready = _live_environment_present()
     action_columns = st.columns(2, gap="small")
     with action_columns[0]:
@@ -408,10 +422,11 @@ def render(
         st.rerun()
 
     if generate:
+        previous_candidate = st.session_state.get("v2_candidate_item")
+        previous_selected = st.session_state.get("v2_selected_item")
         st.session_state["v2_construct_spec"] = None
         st.session_state["v2_scenario_blueprint"] = None
         st.session_state["v2_generation_options"] = None
-        st.session_state["v2_candidate_item"] = None
         st.session_state["v2_generation_error"] = None
         try:
             config = LiveModelConfig.from_env()
@@ -422,16 +437,37 @@ def render(
                 anchors[anchor_id],
                 context_domain,
             )
-            st.session_state["v2_construct_spec"] = generated.construct_spec
-            st.session_state["v2_scenario_blueprint"] = generated.scenario_blueprint
-            st.session_state["v2_generation_options"] = generated
-            st.session_state["v2_candidate_item"] = generated
-            st.session_state["v2_selected_item"] = generated.item_id
-            st.session_state["v2_stage_status"] = {
-                stage: "COMPLETE" for stage in STAGES
-            }
-            service.save_generated_item(project.config.project_id, generated)
-            st.rerun()
+            try:
+                service.save_generated_item(project.config.project_id, generated)
+            except (KeyError, OSError, ValueError):
+                st.session_state["v2_construct_spec"] = generated.construct_spec
+                st.session_state["v2_scenario_blueprint"] = (
+                    generated.scenario_blueprint
+                )
+                st.session_state["v2_generation_options"] = generated
+                st.session_state["v2_candidate_item"] = previous_candidate
+                st.session_state["v2_selected_item"] = previous_selected
+                st.session_state["v2_stage_status"] = {
+                    "CONSTRUCT SPECIFICATION": "COMPLETE",
+                    "SCENARIO BLUEPRINT": "COMPLETE",
+                    "RESPONSE OPTIONS": "COMPLETE",
+                    "QUALITY CHECKS": "NOT SAVED",
+                }
+                st.session_state["v2_generation_error"] = (
+                    "Generated item could not be saved."
+                )
+            else:
+                st.session_state["v2_construct_spec"] = generated.construct_spec
+                st.session_state["v2_scenario_blueprint"] = (
+                    generated.scenario_blueprint
+                )
+                st.session_state["v2_generation_options"] = generated
+                st.session_state["v2_candidate_item"] = generated
+                st.session_state["v2_selected_item"] = generated.item_id
+                st.session_state["v2_stage_status"] = {
+                    stage: "COMPLETE" for stage in STAGES
+                }
+                st.rerun()
         except GenerationStageError as error:
             _store_partial_results(error)
         except ModelUnavailable:
@@ -440,7 +476,7 @@ def render(
             )
         except (KeyError, ValueError):
             st.session_state["v2_generation_error"] = (
-                "The generated item could not be saved safely."
+                "Live generation could not be completed."
             )
 
     error_message = st.session_state.get("v2_generation_error")
@@ -478,6 +514,17 @@ def render(
         )
         statuses = st.session_state.get("v2_stage_status", {})
 
+    stage_item = display_item
+    if mode == GenerationMode.LIVE.value and stage_item is None:
+        options_state = st.session_state.get("v2_generation_options")
+        if (
+            isinstance(options_state, CandidateItem)
+            and options_state.generation_mode is GenerationMode.LIVE
+            and options_state.domain_id == domain_id
+            and options_state.facet_id == facet_id
+        ):
+            stage_item = options_state
+
     active_stage = st.session_state.get("v2_active_stage", STAGES[0])
     if active_stage not in STAGES:
         active_stage = STAGES[0]
@@ -500,7 +547,7 @@ def render(
                 st.rerun()
             st.caption(str(statuses.get(stage, "NOT RUN")))
     with central:
-        _render_stage(active_stage, spec, blueprint, display_item)
+        _render_stage(active_stage, spec, blueprint, stage_item)
     with provenance:
         if display_item is None:
             st.markdown('<div class="section-heading">PROVENANCE</div>', unsafe_allow_html=True)

@@ -237,6 +237,9 @@ def apply_theme() -> None:
         }}
         .detail-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
         .trace-grid {{ grid-template-columns: repeat(5, minmax(0, 1fr)); }}
+        .trace-grid.trace-grid--compact {{
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }}
         .stage-grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
         .detail-cell {{
             border-top: 2px solid var(--ink);
@@ -281,6 +284,10 @@ def apply_theme() -> None:
             align-items: start;
             border-bottom: 1px solid var(--line);
             padding: 11px 0;
+        }}
+        .source-list.source-list--compact .source-row {{
+            grid-template-columns: 1fr;
+            gap: 4px;
         }}
         .source-id {{ color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }}
         .source-text {{ color: var(--ink); font-size: 16px; }}

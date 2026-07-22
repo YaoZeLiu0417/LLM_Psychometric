@@ -136,6 +136,7 @@ def render_provenance(
     *,
     item: CandidateItem,
     anchors: Mapping[str, ConstructAnchor],
+    compact: bool = False,
 ) -> None:
     domain = DOMAINS[item.domain_id]
     facet = FACETS[item.facet_id]
@@ -144,6 +145,10 @@ def render_provenance(
         ("FACET", f"{item.facet_id} · {facet.label_en} / {facet.label_zh}"),
         ("PROMPT", item.prompt_version),
         ("MODEL", item.model_id or "CURATED SEED"),
+    )
+    trace_grid_class = "trace-grid trace-grid--compact" if compact else "trace-grid"
+    source_list_class = (
+        "source-list source-list--compact" if compact else "source-list"
     )
     cells = "".join(
         f'<div class="trace-cell">'
@@ -177,11 +182,12 @@ def render_provenance(
         )
     st.markdown('<div class="section-heading">PROVENANCE</div>', unsafe_allow_html=True)
     st.markdown(
-        f'<div class="trace-record"><div class="trace-grid">{cells}</div></div>',
+        f'<div class="trace-record"><div class="{trace_grid_class}">'
+        f'{cells}</div></div>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        f'<div class="source-list">{"".join(source_rows)}</div>',
+        f'<div class="{source_list_class}">{"".join(source_rows)}</div>',
         unsafe_allow_html=True,
     )
     st.markdown('<div class="field-label">STATUS</div>', unsafe_allow_html=True)

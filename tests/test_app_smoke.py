@@ -572,6 +572,33 @@ render_provenance(item=item, anchors=load_anchor_asset(ANCHOR_ASSET))
         assert anchor_id in source_markup
 
 
+def test_generation_uses_compact_provenance_while_review_stays_standard() -> None:
+    generation_app = _run_app("GENERATION STUDIO")
+
+    assert not generation_app.exception
+    generation_markup = _markdown(generation_app)
+    theme_markup = generation_app.markdown[0].value
+    assert 'class="trace-grid trace-grid--compact"' in generation_markup
+    assert 'class="source-list source-list--compact"' in generation_markup
+    assert """.trace-grid.trace-grid--compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}""" in theme_markup
+    assert """.source-list.source-list--compact .source-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+}""" in theme_markup
+
+    review_app = _run_app("REVIEW")
+
+    assert not review_app.exception
+    review_markup = _markdown(review_app)
+    assert 'class="trace-grid trace-grid--compact"' not in review_markup
+    assert 'class="source-list source-list--compact"' not in review_markup
+    assert 'class="trace-grid"' in review_markup
+    assert 'class="source-list"' in review_markup
+    assert "grid-template-columns: 150px minmax(0, 1fr) 120px;" in theme_markup
+
+
 def test_generation_actions_do_not_depend_on_material_icon_tokens() -> None:
     app = _run_app("GENERATION STUDIO")
 

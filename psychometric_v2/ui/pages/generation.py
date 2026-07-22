@@ -552,5 +552,5 @@ def render(
             st.markdown('<div class="section-heading">PROVENANCE</div>', unsafe_allow_html=True)
             st.info("Provenance becomes available after a candidate is validated.")
         else:
-            render_provenance(item=display_item, anchors=anchors)
+            render_provenance(item=display_item, anchors=anchors, compact=True)
             _render_trace_summary(display_item)

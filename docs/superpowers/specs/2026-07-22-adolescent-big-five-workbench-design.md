@@ -2,7 +2,7 @@
 
 Date: 2026-07-22  
 Target demo: 2026-07-24  
-Status: Approved in conversation; awaiting written-spec review
+Status: Approved for implementation
 
 ## 1. Purpose
 

@@ -198,8 +198,10 @@ def _ensure_editor_hydrated(item: CandidateItem) -> tuple[ResponseOption, ...]:
         options = _base_options(item.item_id)
         if options is None:
             raise RuntimeError("review editor hydration failed")
-    elif _option_signature(item.options) != st.session_state.get(
-        "v2_review_base_option_signature"
+    elif (
+        st.session_state["v2_review_base_version"] != len(item.review_versions)
+        or _option_signature(item.options)
+        != st.session_state.get("v2_review_base_option_signature")
     ):
         st.session_state["v2_review_conflict_item"] = item.item_id
     return options
@@ -355,14 +357,18 @@ def render(
 
         actions = st.columns(4, gap="small")
         action_clicked: ReviewAction | None = None
+        conflicted = (
+            st.session_state.get("v2_review_conflict_item") == item.item_id
+        )
         action_specs = (
-            ("SAVE REVISION", ReviewAction.EDIT, False),
-            ("RETURN", ReviewAction.RETURN, False),
-            ("APPROVE CONTENT", ReviewAction.APPROVE, False),
+            ("SAVE REVISION", ReviewAction.EDIT, conflicted),
+            ("RETURN", ReviewAction.RETURN, conflicted),
+            ("APPROVE CONTENT", ReviewAction.APPROVE, conflicted),
             (
                 "PROMOTE TO PILOT",
                 ReviewAction.PROMOTE_TO_PILOT,
-                item.evidence_status is not EvidenceStatus.HUMAN_REVIEWED,
+                conflicted
+                or item.evidence_status is not EvidenceStatus.HUMAN_REVIEWED,
             ),
         )
         for column, (label, action, disabled) in zip(actions, action_specs):

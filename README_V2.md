@@ -11,6 +11,10 @@ powershell -ExecutionPolicy Bypass -File .\run_v2.ps1
 
 Open `http://localhost:8501`. CURATED DEMO works without credentials and is the stable presentation path.
 
+## Runtime boundary
+
+Use one Streamlit server process per workspace. Manual or direct JSON edits and additional processes sharing a workspace are unsupported in demo V2; atomic file replacement does not provide cross-process transaction isolation.
+
 ## Optional live generation
 
 Set these environment variables before launching the app:

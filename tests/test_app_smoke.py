@@ -376,7 +376,7 @@ def test_live_success_commits_session_only_after_persistence(monkeypatch) -> Non
     _button(app, "GENERATE").click().run()
 
     assert not app.exception
-    assert observed["candidate"].item_id == seed.item_id
+    assert observed["candidate"] is None
     assert observed["selected"] == seed.item_id
     assert set(observed["statuses"].values()) == {"CURATED"}
     assert app.session_state["v2_candidate_item"].item_id == generated.item_id
@@ -498,6 +498,73 @@ render(project, load_anchor_asset(ANCHOR_ASSET), service)
     assert loaded.options[0].text_zh == "PERSISTED REVIEW OPTION"
     assert loaded.evidence_status.value == "HUMAN_REVIEWED"
     assert len(loaded.review_versions) == 1
+
+
+def test_construct_failure_does_not_reuse_previous_live_candidate(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
+    monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    old_live = seed.validated_update(
+        item_id="live-sociability-previous",
+        generation_mode=GenerationMode.LIVE,
+        model_id="previous-live-model",
+    )
+
+    class ConstructFailingPipeline:
+        def __init__(self, _client) -> None:
+            pass
+
+        def generate_candidate(self, _config, _anchor, _context):
+            raise GenerationStageError(
+                "construct",
+                "The construct stage returned invalid structured data.",
+                partial_results={},
+            )
+
+    monkeypatch.setattr(
+        generation.LiveModelConfig,
+        "from_env",
+        staticmethod(lambda: object()),
+    )
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", lambda _config: object())
+    monkeypatch.setattr(
+        generation,
+        "GenerationPipeline",
+        ConstructFailingPipeline,
+    )
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    app.session_state["v2_generation_mode"] = "LIVE GENERATION"
+    app.session_state["v2_active_stage"] = "RESPONSE OPTIONS"
+    app.session_state["v2_construct_spec"] = old_live.construct_spec
+    app.session_state["v2_scenario_blueprint"] = old_live.scenario_blueprint
+    app.session_state["v2_generation_options"] = old_live
+    app.session_state["v2_candidate_item"] = old_live
+    app.session_state["v2_selected_item"] = old_live.item_id
+    app.run()
+
+    assert old_live.stem_zh in _markdown(app)
+    _button(app, "GENERATE").click().run()
+
+    assert not app.exception
+    assert app.error[0].value == (
+        "The construct stage returned invalid structured data."
+    )
+    assert app.session_state["v2_candidate_item"] is None
+    assert app.session_state["v2_stage_status"]["CONSTRUCT SPECIFICATION"] == (
+        "ERROR"
+    )
+    assert app.session_state["v2_stage_status"]["SCENARIO BLUEPRINT"] == "NOT RUN"
+    assert app.session_state["v2_stage_status"]["RESPONSE OPTIONS"] == "NOT RUN"
+    assert app.session_state["v2_stage_status"]["QUALITY CHECKS"] == "NOT RUN"
+    assert old_live.stem_zh not in _markdown(app)
+    for option in old_live.options:
+        assert option.text_zh not in _markdown(app)
+
+    app.run()
+    assert not app.exception
+    assert app.session_state["v2_candidate_item"] is None
+    assert old_live.stem_zh not in _markdown(app)
 
 
 def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch) -> None:

@@ -424,6 +424,7 @@ def render(
     if generate:
         previous_candidate = st.session_state.get("v2_candidate_item")
         previous_selected = st.session_state.get("v2_selected_item")
+        st.session_state["v2_candidate_item"] = None
         st.session_state["v2_construct_spec"] = None
         st.session_state["v2_scenario_blueprint"] = None
         st.session_state["v2_generation_options"] = None

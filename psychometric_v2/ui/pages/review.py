@@ -301,7 +301,6 @@ def render(
             data=project_json_bytes(export_project),
             file_name="adolescent_big_five_demo.json",
             mime="application/json",
-            icon=":material/download:",
             on_click="ignore",
             use_container_width=True,
         )
@@ -311,7 +310,6 @@ def render(
             data=project_csv_bytes(export_project),
             file_name="adolescent_big_five_items.csv",
             mime="text/csv",
-            icon=":material/download:",
             on_click="ignore",
             use_container_width=True,
         )

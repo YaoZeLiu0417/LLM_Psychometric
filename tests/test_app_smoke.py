@@ -599,7 +599,7 @@ def test_generation_uses_compact_provenance_while_review_stays_standard() -> Non
     assert "grid-template-columns: 150px minmax(0, 1fr) 120px;" in theme_markup
 
 
-def test_generation_actions_do_not_depend_on_material_icon_tokens() -> None:
+def test_v2_ui_actions_do_not_depend_on_material_icon_tokens() -> None:
     app = _run_app("GENERATION STUDIO")
 
     assert not app.exception
@@ -607,6 +607,14 @@ def test_generation_actions_do_not_depend_on_material_icon_tokens() -> None:
         button = _button(app, label)
         assert not button.proto.icon
         assert ":material/" not in str(button.proto)
+
+    ui_root = ROOT / "psychometric_v2" / "ui"
+    material_tokens = {
+        str(path.relative_to(ui_root)): source.count(":material/")
+        for path in sorted(ui_root.rglob("*.py"))
+        if ":material/" in (source := path.read_text(encoding="utf-8"))
+    }
+    assert material_tokens == {}
 
 
 def test_provenance_shows_safe_fallback_for_missing_anchor() -> None:

@@ -6,10 +6,13 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from psychometric_v2 import config as v2_config
 from psychometric_v2.demo_seed import build_demo_project
-from psychometric_v2.models import GenerationMode
+from psychometric_v2.models import GenerationMode, ReviewAction
 from psychometric_v2.pipeline import GenerationStageError
+from psychometric_v2.repository import JsonProjectRepository
 from psychometric_v2.ui.pages import generation, review
+from psychometric_v2.workbench import WorkbenchService
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +43,13 @@ PAGES = {
         "新学期社团第一次活动",
     ),
 }
+
+
+@pytest.fixture(autouse=True)
+def isolated_app_workspace(tmp_path, monkeypatch) -> Path:
+    workspace = tmp_path / "workspace_data"
+    monkeypatch.setattr(v2_config, "WORKSPACE_ROOT", workspace)
+    return workspace
 
 
 def _run_app(page: str | None = None) -> AppTest:
@@ -220,6 +230,110 @@ def test_participant_preview_never_renders_research_metadata() -> None:
         "VALIDATED",
     ):
         assert hidden_term not in rendered
+
+
+def test_participant_header_stays_curated_when_selected_item_is_live() -> None:
+    app = AppTest.from_string(
+        """
+import streamlit as st
+
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.models import GenerationMode
+from psychometric_v2.ui.components import render_header
+from psychometric_v2.ui.pages.participant import render
+from psychometric_v2.ui.state import init_state
+
+seed = build_demo_project()
+curated = seed.items[seed.selected_item_id]
+live = curated.validated_update(
+    item_id="live-selected-before-participant",
+    stem_zh="LIVE STEM MUST NOT BE SHOWN",
+    generation_mode=GenerationMode.LIVE,
+    model_id="fake-model",
+)
+project = seed.validated_update(
+    items={**dict(seed.items), live.item_id: live},
+    selected_item_id=live.item_id,
+)
+init_state()
+st.session_state["v2_active_page"] = "PARTICIPANT VIEW"
+st.session_state["v2_selected_item"] = live.item_id
+render_header(project, live_available=True)
+render(project, {}, None)
+        """
+    ).run()
+
+    assert not app.exception
+    markdown = _markdown(app)
+    assert '<span class="mode-badge">CURATED DEMO</span>' in markdown
+    assert '<span class="mode-badge">LIVE GENERATION</span>' not in markdown
+    assert "LIVE STEM MUST NOT BE SHOWN" not in markdown
+    assert "新学期社团第一次活动" in markdown
+
+
+def test_participant_uses_edited_project_from_isolated_workspace(
+    isolated_app_workspace,
+) -> None:
+    repository = JsonProjectRepository(isolated_app_workspace / "v2" / "projects")
+    project = repository.ensure_seed(build_demo_project())
+    item = project.items[project.selected_item_id]
+    edited_options = tuple(
+        option.validated_update(
+            text_zh=(
+                "隔离项目中的已编辑选项"
+                if option.display_order == 1
+                else option.text_zh
+            )
+        )
+        for option in item.options
+    )
+    WorkbenchService(repository).review_item(
+        project.config.project_id,
+        item.item_id,
+        "隔离项目中的已编辑题干",
+        edited_options,
+        "smoke-test-reviewer",
+        ReviewAction.EDIT,
+        "prove smoke tests do not read the runtime workspace",
+    )
+
+    app = _run_app("PARTICIPANT VIEW")
+
+    assert not app.exception
+    markdown = _markdown(app)
+    assert "隔离项目中的已编辑题干" in markdown
+    assert "隔离项目中的已编辑选项" in app.radio[0].options
+    assert "1 / 5" in markdown
+
+
+def test_participant_reports_unavailable_when_project_has_no_curated_items() -> None:
+    app = AppTest.from_string(
+        """
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.models import GenerationMode
+from psychometric_v2.ui.pages.participant import render
+from psychometric_v2.ui.state import init_state
+
+seed = build_demo_project()
+base = seed.items[seed.selected_item_id]
+live = base.validated_update(
+    item_id="live-only-item",
+    generation_mode=GenerationMode.LIVE,
+    model_id="fake-model",
+)
+project = seed.validated_update(
+    items={live.item_id: live},
+    selected_item_id=live.item_id,
+)
+init_state()
+render(project, {}, None)
+        """
+    ).run()
+
+    assert not app.exception
+    assert len(app.info) == 1
+    assert app.info[0].value == "Preview unavailable"
+    assert "Preview complete" not in _markdown(app)
 
 
 def test_research_downloads_are_review_only_and_exclude_preview_responses(

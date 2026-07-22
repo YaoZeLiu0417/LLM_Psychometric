@@ -52,7 +52,7 @@ def _effective_page() -> str:
 def _effective_mode(project: ResearchProject, page: str) -> str:
     if page == "GENERATION STUDIO":
         return str(st.session_state.get("v2_generation_mode", "CURATED DEMO"))
-    if page in {"REVIEW", "PARTICIPANT VIEW"}:
+    if page == "REVIEW":
         return selected_item(project).generation_mode.value
     return "CURATED DEMO"
 

@@ -2,7 +2,7 @@ import os
 
 import streamlit as st
 
-from psychometric_v2.config import ANCHOR_ASSET, ROOT
+from psychometric_v2.config import ANCHOR_ASSET, WORKSPACE_ROOT
 from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.legacy import load_anchor_asset
 from psychometric_v2.repository import JsonProjectRepository
@@ -25,7 +25,7 @@ pending_generation_mode = st.session_state.pop("v2_pending_generation_mode", Non
 if pending_generation_mode in ("CURATED DEMO", "LIVE GENERATION"):
     st.session_state["v2_generation_mode"] = pending_generation_mode
 
-repository = JsonProjectRepository(ROOT / "workspace_data" / "v2" / "projects")
+repository = JsonProjectRepository(WORKSPACE_ROOT / "v2" / "projects")
 research_project = repository.ensure_seed(build_demo_project())
 construct_anchors = load_anchor_asset(ANCHOR_ASSET)
 workbench = WorkbenchService(repository)

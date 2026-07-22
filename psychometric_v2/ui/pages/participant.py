@@ -68,6 +68,10 @@ def render(
         unsafe_allow_html=True,
     )
 
+    if not items:
+        st.info("Preview unavailable")
+        return
+
     if index == item_count:
         st.markdown(
             """
@@ -85,10 +89,6 @@ def render(
             type="tertiary",
         ):
             _go_to(item_count - 1)
-        return
-
-    if not items:
-        st.info("Preview unavailable")
         return
 
     item = items[index]

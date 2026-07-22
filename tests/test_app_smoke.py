@@ -244,6 +244,10 @@ def test_generation_studio_exposes_stages_and_safe_curated_fallback(monkeypatch)
         assert stage in text
     assert _button(app, "GENERATE").disabled is True
     assert _button(app, "LOAD CURATED EXAMPLE").disabled is False
+    assert _widget_with_key(app.selectbox, "v2_context_domain").value == "club"
+    assert _widget_with_key(app.selectbox, "v2_selected_anchor").value == (
+        "bfi2-sociability-01"
+    )
     assert all(
         widget.key.startswith("v2_")
         for widgets in (app.selectbox, app.button)
@@ -265,6 +269,50 @@ def test_generation_studio_exposes_stages_and_safe_curated_fallback(monkeypatch)
         "demo-extraversion-sociability"
     )
     assert app.session_state["v2_selected_item"] == "demo-extraversion-sociability"
+
+
+def test_curated_example_requires_exact_anchor_and_context_match() -> None:
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    app = _run_app("GENERATION STUDIO")
+
+    assert seed.construct_spec.definition_zh in _markdown(app)
+    _widget_with_key(app.selectbox, "v2_selected_anchor").set_value(
+        "bfi2-sociability-02"
+    ).run()
+
+    assert not app.exception
+    assert _button(app, "LOAD CURATED EXAMPLE").disabled is True
+    assert seed.construct_spec.definition_zh not in _markdown(app)
+
+    _widget_with_key(app.selectbox, "v2_selected_anchor").set_value(
+        "bfi2-sociability-01"
+    ).run()
+    _widget_with_key(app.selectbox, "v2_context_domain").set_value(
+        "classroom"
+    ).run()
+
+    assert not app.exception
+    assert _button(app, "LOAD CURATED EXAMPLE").disabled is True
+    assert seed.construct_spec.definition_zh not in _markdown(app)
+
+
+def test_generation_provenance_inspector_lists_all_options_and_checks() -> None:
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    app = _run_app("GENERATION STUDIO")
+    markdown = _markdown(app)
+
+    assert not app.exception
+    for option in seed.options:
+        assert option.option_id in markdown
+        assert option.text_zh in markdown
+        assert option.rationale in markdown
+    for check in seed.quality_checks:
+        assert check.check_id in markdown
+        assert check.label in markdown
+        assert check.outcome.value in markdown
+        assert check.severity.value in markdown
+        assert check.evidence in markdown
+        assert (check.recommendation or "No change recommended.") in markdown
 
 
 def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch) -> None:
@@ -432,6 +480,55 @@ render(project, load_anchor_asset(ANCHOR_ASSET), WorkbenchService(repository))
     assert selected["STATUS"] == "HUMAN_REVIEWED"
     assert selected["VERSIONS"] == 1
     assert _button(app, "PROMOTE TO PILOT").disabled is False
+
+
+def test_review_selection_updates_header_mode_in_the_same_rerun() -> None:
+    app = AppTest.from_string(
+        """
+import streamlit as st
+
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.models import GenerationMode
+from psychometric_v2.ui.components import render_header
+from psychometric_v2.ui.pages.review import render, sync_selected_item_from_review
+from psychometric_v2.ui.state import init_state
+
+seed = build_demo_project()
+curated = seed.items[seed.selected_item_id]
+live = curated.validated_update(
+    item_id="live-review-selection",
+    generation_mode=GenerationMode.LIVE,
+    model_id="fake-live-model",
+)
+project = seed.validated_update(
+    items={curated.item_id: curated, live.item_id: live},
+    selected_item_id=curated.item_id,
+)
+init_state()
+st.session_state["v2_active_page"] = "REVIEW"
+sync_selected_item_from_review(project)
+render_header(project, live_available=True)
+render(project, {}, None)
+        """,
+        default_timeout=10,
+    ).run()
+
+    assert not app.exception
+    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
+    _widget_with_key(app.selectbox, "v2_review_item").set_value(
+        "live-review-selection"
+    ).run()
+
+    assert not app.exception
+    assert '<span class="mode-badge">LIVE GENERATION</span>' in _markdown(app)
+    assert '<span class="mode-badge">CURATED DEMO</span>' not in _markdown(app)
+
+    _widget_with_key(app.selectbox, "v2_review_item").set_value(
+        "demo-extraversion-sociability"
+    ).run()
+    assert not app.exception
+    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
+    assert '<span class="mode-badge">LIVE GENERATION</span>' not in _markdown(app)
 
 
 def test_review_header_uses_selected_live_item_generation_mode() -> None:

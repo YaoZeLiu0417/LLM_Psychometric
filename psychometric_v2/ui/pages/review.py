@@ -24,6 +24,12 @@ def _e(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
+def sync_selected_item_from_review(project: ResearchProject) -> None:
+    requested = st.session_state.get("v2_review_item")
+    if isinstance(requested, str) and requested in project.items:
+        st.session_state["v2_selected_item"] = requested
+
+
 def _queue(project: ResearchProject) -> pd.DataFrame:
     rows = []
     for item in project.items.values():

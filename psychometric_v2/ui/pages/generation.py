@@ -41,11 +41,27 @@ def _live_environment_present() -> bool:
     )
 
 
-def _matching_seed(domain_id: str, facet_id: str) -> CandidateItem | None:
+def _facet_seed(domain_id: str, facet_id: str) -> CandidateItem | None:
     for item in build_demo_project().items.values():
         if item.domain_id == domain_id and item.facet_id == facet_id:
             return item
     return None
+
+
+def _matching_seed(
+    domain_id: str,
+    facet_id: str,
+    anchor_id: str,
+    context_domain: str,
+) -> CandidateItem | None:
+    item = _facet_seed(domain_id, facet_id)
+    if item is None or item.scenario_blueprint is None:
+        return None
+    if item.anchor_ids != (anchor_id,):
+        return None
+    if item.scenario_blueprint.context_domain != context_domain:
+        return None
+    return item
 
 
 def _load_curated(item: CandidateItem) -> None:
@@ -234,12 +250,40 @@ def _render_stage(
 def _render_trace_summary(item: CandidateItem) -> None:
     passed = sum(check.outcome.value == "PASS" for check in item.quality_checks)
     flagged = len(item.quality_checks) - passed
+    option_rows = "".join(
+        f"""
+        <div style="border-bottom:1px solid #D9D9D5;padding:9px 0">
+          <div class="field-label">{_e(option.option_id)} / OPTION {_e(option.display_order)}</div>
+          <div class="zh-content">{_e(option.text_zh)}</div>
+          <div class="field-label">RATIONALE</div>
+          <div class="zh-content">{_e(option.rationale)}</div>
+        </div>
+        """
+        for option in sorted(item.options, key=lambda value: value.display_order)
+    )
+    check_rows = "".join(
+        f"""
+        <div style="border-bottom:1px solid #D9D9D5;padding:9px 0">
+          <div class="field-label">{_e(check.check_id)}</div>
+          <div><strong>{_e(check.label)}</strong> / {_e(check.outcome.value)} / {_e(check.severity.value)}</div>
+          <div class="field-label">EVIDENCE</div>
+          <div class="zh-content">{_e(check.evidence)}</div>
+          <div class="field-label">RECOMMENDATION</div>
+          <div class="zh-content">{_e(check.recommendation or 'No change recommended.')}</div>
+        </div>
+        """
+        for check in item.quality_checks
+    )
     st.markdown(
         f"""
         <div class="tool-band">
           <div class="field-label">GENERATION TIMESTAMP</div><div class="detail-value">{_e(item.created_at)}</div>
-          <div class="field-label">CHECKS</div><div class="detail-value">{passed} PASS / {flagged} FLAG</div>
+          <div class="field-label">CHECKS</div><div class="detail-value">{_e(passed)} PASS / {_e(flagged)} FLAG</div>
         </div>
+        <div class="section-heading">OBSERVABLE OPTION RATIONALES</div>
+        {option_rows}
+        <div class="section-heading">QUALITY CHECK RECORD</div>
+        {check_rows}
         """,
         unsafe_allow_html=True,
     )
@@ -285,8 +329,23 @@ def render(
             format_func=lambda value: FACETS[value].label_en,
             key="v2_selected_facet",
         )
+    taxonomy_selection = (domain_id, facet_id)
+    taxonomy_changed = (
+        st.session_state.get("v2_generation_taxonomy_selection")
+        != taxonomy_selection
+    )
+    st.session_state["v2_generation_taxonomy_selection"] = taxonomy_selection
+    default_curated = _facet_seed(domain_id, facet_id)
     context_domains = tuple(project.config.context_domains)
-    if st.session_state.get("v2_context_domain") not in context_domains:
+    if (
+        taxonomy_changed
+        and default_curated is not None
+        and default_curated.scenario_blueprint is not None
+    ):
+        st.session_state["v2_context_domain"] = (
+            default_curated.scenario_blueprint.context_domain
+        )
+    elif st.session_state.get("v2_context_domain") not in context_domains:
         st.session_state["v2_context_domain"] = context_domains[0]
     with controls[3]:
         context_domain = st.selectbox(
@@ -301,7 +360,13 @@ def render(
             if anchor.domain_id == domain_id and anchor.facet_id == facet_id
         )
     )
-    if st.session_state.get("v2_selected_anchor") not in anchor_ids:
+    if (
+        taxonomy_changed
+        and default_curated is not None
+        and default_curated.anchor_ids[0] in anchor_ids
+    ):
+        st.session_state["v2_selected_anchor"] = default_curated.anchor_ids[0]
+    elif st.session_state.get("v2_selected_anchor") not in anchor_ids:
         st.session_state["v2_selected_anchor"] = anchor_ids[0]
     with controls[4]:
         anchor_id = st.selectbox(
@@ -311,7 +376,7 @@ def render(
             key="v2_selected_anchor",
         )
 
-    curated = _matching_seed(domain_id, facet_id)
+    curated = _matching_seed(domain_id, facet_id, anchor_id, context_domain)
     live_ready = _live_environment_present()
     action_columns = st.columns(2, gap="small")
     with action_columns[0]:
@@ -334,7 +399,9 @@ def render(
     if mode == GenerationMode.LIVE.value and not live_ready:
         st.info("Live generation requires OPENAI_API_KEY and LLM_MODEL configuration.")
     if curated is None:
-        st.info("No curated example matches the selected domain and facet.")
+        st.info(
+            "No curated example matches the selected domain, facet, anchor, and context."
+        )
 
     if load_curated and curated is not None:
         _load_curated(curated)

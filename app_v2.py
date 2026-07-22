@@ -29,6 +29,7 @@ repository = JsonProjectRepository(ROOT / "workspace_data" / "v2" / "projects")
 research_project = repository.ensure_seed(build_demo_project())
 construct_anchors = load_anchor_asset(ANCHOR_ASSET)
 workbench = WorkbenchService(repository)
+review.sync_selected_item_from_review(research_project)
 
 live_available = bool(
     os.getenv("OPENAI_API_KEY", "").strip()

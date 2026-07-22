@@ -111,5 +111,107 @@ def test_status_palette_and_responsive_breakpoints_are_exposed() -> None:
     assert any("status-model-draft" in value for value in status_markup)
 
     theme_markup = review.markdown[0].value
+    expected_status_colors = {
+        "status-model-draft": "#24A8D8",
+        "status-needs-revision": "#F28C28",
+        "status-human-reviewed": "#D81B78",
+        "status-pilot-candidate": "#40358C",
+    }
+    for class_name, color in expected_status_colors.items():
+        assert f".{class_name} {{ background: {color};" in theme_markup
     assert "@media (max-width: 1280px)" in theme_markup
     assert "@media (max-width: 600px)" in theme_markup
+
+
+def test_provenance_renders_taxonomy_all_anchors_and_evidence_status() -> None:
+    app = AppTest.from_string(
+        """
+from psychometric_v2.config import ANCHOR_ASSET
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.legacy import load_anchor_asset
+from psychometric_v2.ui.components import render_provenance
+
+project = build_demo_project()
+base = project.items[project.selected_item_id]
+anchor_ids = ("bfi2-sociability-01", "bfi2-sociability-02")
+spec = base.construct_spec.validated_update(anchor_ids=anchor_ids)
+item = base.validated_update(anchor_ids=anchor_ids, construct_spec=spec)
+render_provenance(item=item, anchors=load_anchor_asset(ANCHOR_ASSET))
+        """
+    ).run()
+
+    assert not app.exception
+    markdown = _markdown(app)
+    assert "extraversion" in markdown
+    assert "sociability" in markdown
+    assert "bfi2-sociability-01" in markdown
+    assert "我是一个性格外向，喜欢交际的人。" in markdown
+    assert "FORWARD KEYED" in markdown
+    assert "bfi2-sociability-02" in markdown
+    assert "我是一个比较安静的人。" in markdown
+    assert "REVERSE KEYED" in markdown
+    assert "v2.0-demo" in markdown
+    assert "CURATED SEED" in markdown
+    assert any(
+        "status-model-draft" in element.value and "MODEL_DRAFT" in element.value
+        for element in app.markdown
+    )
+
+
+def test_provenance_shows_safe_fallback_for_missing_anchor() -> None:
+    app = AppTest.from_string(
+        """
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.ui.components import render_provenance
+
+project = build_demo_project()
+base = project.items[project.selected_item_id]
+anchor_ids = ("missing-source-anchor",)
+spec = base.construct_spec.validated_update(anchor_ids=anchor_ids)
+item = base.validated_update(anchor_ids=anchor_ids, construct_spec=spec)
+render_provenance(item=item, anchors={})
+        """
+    ).run()
+
+    assert not app.exception
+    markdown = _markdown(app)
+    assert "missing-source-anchor" in markdown
+    assert "SOURCE ANCHOR UNAVAILABLE" in markdown
+
+
+def test_live_button_follows_environment_without_calling_a_model(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    unavailable = _run_app("GENERATION STUDIO")
+
+    assert not unavailable.exception
+    assert len(unavailable.button) == 1
+    assert unavailable.button[0].key == "v2_live_generation"
+    assert unavailable.button[0].disabled is True
+
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
+    monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
+    available = _run_app("GENERATION STUDIO")
+
+    assert not available.exception
+    assert len(available.button) == 1
+    assert available.button[0].key == "v2_live_generation"
+    assert available.button[0].disabled is False
+
+    studio = AppTest.from_string(
+        """
+from psychometric_v2.config import ANCHOR_ASSET
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.legacy import load_anchor_asset
+from psychometric_v2.ui.pages.generation import render
+
+render(build_demo_project(), load_anchor_asset(ANCHOR_ASSET), None)
+        """
+    ).run()
+    assert not studio.exception
+    assert studio.button[0].disabled is False
+
+    studio.button[0].click().run()
+    assert not studio.exception
+    assert studio.session_state["v2_generation_mode"] == "LIVE GENERATION"
+    assert "CURATED SEED" in _markdown(studio)

@@ -5,7 +5,11 @@ import streamlit as st
 
 from psychometric_v2.models import ConstructAnchor, ResearchProject
 from psychometric_v2.taxonomy import DOMAINS, FACETS
-from psychometric_v2.ui.components import provenance_values, render_provenance, render_status, selected_item
+from psychometric_v2.ui.components import (
+    render_provenance,
+    render_status,
+    selected_item,
+)
 from psychometric_v2.workbench import WorkbenchService
 
 
@@ -35,4 +39,4 @@ def render(
     st.markdown('<div class="section-heading">SELECTED CANDIDATE</div>', unsafe_allow_html=True)
     st.markdown(f"**{selected.item_id}** · {FACETS[selected.facet_id].label_en}")
     render_status(selected.evidence_status.value)
-    render_provenance(**provenance_values(selected, anchors))
+    render_provenance(item=selected, anchors=anchors)

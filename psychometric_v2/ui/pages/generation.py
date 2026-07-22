@@ -5,10 +5,10 @@ import html
 import pandas as pd
 import streamlit as st
 
+from psychometric_v2.config import LiveModelConfig, ModelUnavailable
 from psychometric_v2.models import ConstructAnchor, ResearchProject
 from psychometric_v2.taxonomy import DOMAINS, FACETS
 from psychometric_v2.ui.components import (
-    provenance_values,
     render_generation_stepper,
     render_provenance,
     selected_item,
@@ -34,6 +34,19 @@ def render(
 
     st.markdown('<div class="page-kicker">READ-ONLY CURATED PIPELINE</div>', unsafe_allow_html=True)
     st.markdown('<div class="workspace-heading">GENERATION STUDIO</div>', unsafe_allow_html=True)
+    try:
+        LiveModelConfig.from_env()
+    except ModelUnavailable:
+        live_available = False
+    else:
+        live_available = True
+    if st.button(
+        "ENTER LIVE MODE",
+        key="v2_live_generation",
+        icon=":material/bolt:",
+        disabled=not live_available,
+    ):
+        st.session_state["v2_generation_mode"] = "LIVE GENERATION"
     st.markdown(
         '<div class="lineage-band">SOURCE ANCHOR -&gt; FACET -&gt; SPEC -&gt; BLUEPRINT -&gt; OPTIONS -&gt; CHECKS -&gt; REVIEW</div>',
         unsafe_allow_html=True,
@@ -95,4 +108,4 @@ def render(
         )
     )
     st.dataframe(checks, hide_index=True, use_container_width=True, height=252)
-    render_provenance(**provenance_values(item, anchors))
+    render_provenance(item=item, anchors=anchors)

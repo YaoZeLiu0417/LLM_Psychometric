@@ -5,7 +5,13 @@ from collections.abc import Mapping
 
 import streamlit as st
 
-from psychometric_v2.models import CandidateItem, ResearchProject
+from psychometric_v2.models import (
+    CandidateItem,
+    ConstructAnchor,
+    EvidenceStatus,
+    ResearchProject,
+)
+from psychometric_v2.taxonomy import DOMAINS, FACETS
 
 
 PAGES = (
@@ -60,61 +66,95 @@ def render_navigation() -> str:
     return selected if selected in PAGES else "PROJECT"
 
 
-def _status_class(status: str) -> str:
-    normalized = status.upper()
-    evidence_classes = {
-        "MODEL_DRAFT": "status-model-draft",
-        "NEEDS_REVISION": "status-needs-revision",
-        "HUMAN_REVIEWED": "status-human-reviewed",
-        "PILOT_CANDIDATE": "status-pilot-candidate",
+def _status_presentation(status: str | EvidenceStatus) -> tuple[str, str, str, str]:
+    label = status.value if isinstance(status, EvidenceStatus) else str(status)
+    normalized = label.upper()
+    evidence_styles = {
+        "MODEL_DRAFT": ("status-model-draft", "#24A8D8", "#0B0B0D"),
+        "NEEDS_REVISION": ("status-needs-revision", "#F28C28", "#0B0B0D"),
+        "HUMAN_REVIEWED": ("status-human-reviewed", "#D81B78", "#FFFFFF"),
+        "PILOT_CANDIDATE": ("status-pilot-candidate", "#40358C", "#FFFFFF"),
     }
-    if normalized in evidence_classes:
-        return evidence_classes[normalized]
+    if normalized in evidence_styles:
+        class_name, background, foreground = evidence_styles[normalized]
+        return label, class_name, background, foreground
     if normalized == "PASS":
-        return "status-pass"
-    if normalized in {"FLAG", "NEEDS_REVISION", "ERROR"}:
-        return "status-flag"
-    if normalized in {"HUMAN_REVIEWED", "REVIEW"}:
-        return "status-review"
-    return "status-model-draft"
+        return label, "status-pass", "#DFF2E8", "#155E3D"
+    if normalized in {"FLAG", "ERROR"}:
+        return label, "status-flag", "#FCE5E9", "#9D1D35"
+    if normalized == "REVIEW":
+        return label, "status-review", "#E3F3F8", "#11617C"
+    return label, "status-model-draft", "#24A8D8", "#0B0B0D"
 
 
-def render_status(status: str) -> None:
+def render_status(status: str | EvidenceStatus) -> None:
+    label, class_name, background, foreground = _status_presentation(status)
     st.markdown(
-        f'<span class="status-badge {_status_class(status)}">{_e(status)}</span>',
+        f'<span class="status-badge {_e(class_name)}" '
+        f'style="background: {_e(background)}; color: {_e(foreground)}">'
+        f'{_e(label)}</span>',
         unsafe_allow_html=True,
     )
 
 
 def render_provenance(
     *,
-    anchor_text: str,
-    direction: str,
-    prompt_version: str,
-    model_id: str,
-    status: str,
+    item: CandidateItem,
+    anchors: Mapping[str, ConstructAnchor],
 ) -> None:
+    domain = DOMAINS[item.domain_id]
+    facet = FACETS[item.facet_id]
     values = (
-        ("SOURCE ANCHOR", anchor_text, "zh-content"),
-        ("DIRECTION", direction, ""),
-        ("PROMPT", prompt_version, ""),
-        ("MODEL", model_id, ""),
-        ("STATUS", status, ""),
+        ("DOMAIN", f"{item.domain_id} · {domain.label_en} / {domain.label_zh}"),
+        ("FACET", f"{item.facet_id} · {facet.label_en} / {facet.label_zh}"),
+        ("PROMPT", item.prompt_version),
+        ("MODEL", item.model_id or "CURATED SEED"),
     )
     cells = "".join(
         f"""
         <div class="trace-cell">
           <div class="field-label">{_e(label)}</div>
-          <div class="trace-value {_e(extra_class)}">{_e(value)}</div>
+          <div class="trace-value">{_e(value)}</div>
         </div>
         """
-        for label, value, extra_class in values
+        for label, value in values
     )
+    source_rows = []
+    for anchor_id in item.anchor_ids:
+        anchor = anchors.get(anchor_id)
+        if anchor is None:
+            source_rows.append(
+                f"""
+                <div class="source-row">
+                  <div class="source-id">{_e(anchor_id)}</div>
+                  <div class="source-text">SOURCE ANCHOR UNAVAILABLE</div>
+                  <div><span class="status-badge status-flag">DIRECTION UNAVAILABLE</span></div>
+                </div>
+                """
+            )
+            continue
+        direction = "REVERSE KEYED" if anchor.reverse else "FORWARD KEYED"
+        direction_class = "status-flag" if anchor.reverse else "status-review"
+        source_rows.append(
+            f"""
+            <div class="source-row">
+              <div class="source-id">{_e(anchor.anchor_id)}</div>
+              <div class="source-text zh-content">{_e(anchor.text_zh)}</div>
+              <div><span class="status-badge {_e(direction_class)}">{_e(direction)}</span></div>
+            </div>
+            """
+        )
     st.markdown('<div class="section-heading">PROVENANCE</div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="trace-record"><div class="trace-grid">{cells}</div></div>',
         unsafe_allow_html=True,
     )
+    st.markdown(
+        f'<div class="source-list">{"".join(source_rows)}</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="field-label">STATUS</div>', unsafe_allow_html=True)
+    render_status(item.evidence_status)
 
 
 def render_generation_stepper(active_stage: str | None = None) -> None:
@@ -138,17 +178,3 @@ def selected_item(project: ResearchProject) -> CandidateItem:
     if project.selected_item_id is not None:
         return project.items[project.selected_item_id]
     return next(iter(project.items.values()))
-
-
-def provenance_values(
-    item: CandidateItem,
-    anchors: Mapping[str, object],
-) -> dict[str, str]:
-    anchor = anchors[item.anchor_ids[0]]
-    return {
-        "anchor_text": str(getattr(anchor, "text_zh")),
-        "direction": "REVERSE KEYED" if bool(getattr(anchor, "reverse")) else "FORWARD KEYED",
-        "prompt_version": item.prompt_version,
-        "model_id": item.model_id or "CURATED SEED",
-        "status": item.evidence_status.value,
-    }

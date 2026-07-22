@@ -117,10 +117,10 @@ def apply_theme() -> None:
             border: 1px solid #6E6E72;
             color: #E7E7E8;
         }}
-        .status-model-draft {{ background: var(--magenta); color: white; }}
-        .status-needs-revision {{ background: var(--orange); color: var(--ink); }}
-        .status-human-reviewed {{ background: var(--cyan); color: var(--ink); }}
-        .status-pilot-candidate {{ background: var(--purple); color: white; }}
+        .status-model-draft {{ background: #24A8D8; color: #0B0B0D; }}
+        .status-needs-revision {{ background: #F28C28; color: #0B0B0D; }}
+        .status-human-reviewed {{ background: #D81B78; color: white; }}
+        .status-pilot-candidate {{ background: #40358C; color: white; }}
         .status-pass {{ background: #DFF2E8; color: #155E3D; }}
         .status-flag {{ background: #FCE5E9; color: #9D1D35; }}
         .status-review {{ background: #E3F3F8; color: #11617C; }}

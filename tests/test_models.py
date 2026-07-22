@@ -696,3 +696,24 @@ def test_generation_metadata_supports_persistence_round_trips(
     }
     with pytest.raises(TypeError):
         cloned.constraint_snapshot["new"] = True  # type: ignore[index,union-attr]
+
+
+@pytest.mark.parametrize(
+    "constraint_snapshot",
+    [
+        {"nested": {1: "value"}},
+        {"nested": {"value": float("nan")}},
+        {"nested": {"value": float("inf")}},
+        {"nested": {"value": float("-inf")}},
+    ],
+    ids=["non-string-key", "nan", "positive-infinity", "negative-infinity"],
+)
+def test_generation_metadata_rejects_noncanonical_json_values(
+    constraint_snapshot: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        GenerationMetadata(
+            model_id="model-1",
+            prompt_version="v2.0-demo",
+            constraint_snapshot=constraint_snapshot,
+        )

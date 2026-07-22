@@ -2,6 +2,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from copy import deepcopy
 from datetime import datetime, timezone
 from enum import Enum
+from math import isfinite
 from typing import Annotated, Any, Generic, Self, TypeVar
 
 from pydantic import (
@@ -426,11 +427,15 @@ class ResearchProject(_ValidatedFrozenModel):
 
 def _freeze_json_value(value: Any) -> Any:
     if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise ValueError("constraint snapshot mapping keys must be strings")
         return FrozenMapping(
             (key, _freeze_json_value(nested)) for key, nested in value.items()
         )
     if isinstance(value, (list, tuple)):
         return tuple(_freeze_json_value(nested) for nested in value)
+    if isinstance(value, float) and not isfinite(value):
+        raise ValueError("constraint snapshot floats must be finite")
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     raise ValueError("constraint snapshot values must be JSON-compatible")

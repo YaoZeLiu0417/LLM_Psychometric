@@ -25,6 +25,16 @@ _PROJECT_LOCKS_GUARD = Lock()
 _PROJECT_LOCKS: dict[str, RLock] = {}
 
 
+class ReviewVersionConflict(ValueError):
+    def __init__(self, expected_version: int, current_version: int) -> None:
+        self.expected_version = expected_version
+        self.current_version = current_version
+        super().__init__(
+            "review version conflict: "
+            f"expected {expected_version}, current {current_version}"
+        )
+
+
 def _project_lock(repository: Any, project_id: str) -> RLock:
     project_path = Path(repository.path_for(project_id)).resolve()
     lock_key = os.path.normcase(str(project_path))
@@ -111,10 +121,7 @@ class WorkbenchService:
 
             current_version = len(existing.review_versions)
             if expected_version != current_version:
-                raise ValueError(
-                    "review version conflict: "
-                    f"expected {expected_version}, current {current_version}"
-                )
+                raise ReviewVersionConflict(expected_version, current_version)
 
             if (
                 review_action is ReviewAction.PROMOTE_TO_PILOT

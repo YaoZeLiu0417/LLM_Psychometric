@@ -15,7 +15,7 @@ from psychometric_v2.models import (
     ReviewAction,
 )
 from psychometric_v2.repository import JsonProjectRepository
-from psychometric_v2.workbench import WorkbenchService
+from psychometric_v2.workbench import ReviewVersionConflict, WorkbenchService
 
 
 def service_with_seed(tmp_path):
@@ -174,6 +174,38 @@ def test_review_rejects_missing_project_item_and_invalid_options(tmp_path) -> No
             item,
             options=item.options[:3],
         )
+
+
+def test_review_raises_typed_version_conflict(tmp_path) -> None:
+    service, repository, project = service_with_seed(tmp_path)
+    item = next(iter(project.items.values()))
+    review(
+        service,
+        project.config.project_id,
+        item,
+        stem="Externally persisted revision",
+        note="external save",
+    )
+
+    with pytest.raises(ReviewVersionConflict) as caught:
+        service.review_item(
+            project.config.project_id,
+            item.item_id,
+            "Stale editor revision",
+            item.options,
+            "reviewer-b",
+            ReviewAction.EDIT,
+            "stale save",
+            expected_version=0,
+        )
+
+    assert isinstance(caught.value, ValueError)
+    assert caught.value.expected_version == 0
+    assert caught.value.current_version == 1
+    assert str(caught.value) == "review version conflict: expected 0, current 1"
+    persisted = repository.load(project.config.project_id).items[item.item_id]
+    assert len(persisted.review_versions) == 1
+    assert persisted.review_versions[0].note == "external save"
 
 
 def test_return_sets_needs_revision_and_versions_are_numbered(tmp_path) -> None:

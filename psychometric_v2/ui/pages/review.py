@@ -19,7 +19,7 @@ from psychometric_v2.models import (
 )
 from psychometric_v2.taxonomy import DOMAINS, FACETS
 from psychometric_v2.ui.components import render_provenance, render_status
-from psychometric_v2.workbench import WorkbenchService
+from psychometric_v2.workbench import ReviewVersionConflict, WorkbenchService
 
 
 _REVIEW_CONFLICT_MESSAGE = (
@@ -98,7 +98,7 @@ def _queue(project: ResearchProject) -> pd.DataFrame:
 
 
 def _option_snapshots(
-    item: CandidateItem,
+    options: tuple[ResponseOption, ...],
     edited_text: dict[str, str],
 ) -> tuple[ResponseOption, ...]:
     return tuple(
@@ -108,7 +108,7 @@ def _option_snapshots(
                 "text_zh": edited_text[option.option_id],
             }
         )
-        for option in item.options
+        for option in options
     )
 
 
@@ -120,29 +120,89 @@ def _option_key(item_id: str, option_id: str) -> str:
     return f"v2_review_option_{item_id}_{option_id}"
 
 
+def _option_signature(
+    options: tuple[ResponseOption, ...],
+) -> tuple[tuple[object, ...], ...]:
+    return tuple(
+        (
+            option.option_id,
+            option.text_zh,
+            option.trait_level,
+            option.score,
+            option.display_order,
+            option.rationale,
+            option.desirability_note,
+        )
+        for option in options
+    )
+
+
+def _base_options(item_id: str) -> tuple[ResponseOption, ...] | None:
+    options = st.session_state.get("v2_review_base_options")
+    if (
+        st.session_state.get("v2_review_hydrated_item") != item_id
+        or not isinstance(options, tuple)
+        or not all(isinstance(option, ResponseOption) for option in options)
+        or st.session_state.get("v2_review_base_option_signature")
+        != _option_signature(options)
+    ):
+        return None
+    return options
+
+
+def _discard_editor_values() -> None:
+    item_id = st.session_state.get("v2_review_hydrated_item")
+    if not isinstance(item_id, str):
+        return
+    st.session_state.pop(_stem_key(item_id), None)
+    options = st.session_state.get("v2_review_base_options")
+    if isinstance(options, tuple):
+        for option in options:
+            if isinstance(option, ResponseOption):
+                st.session_state.pop(_option_key(item_id, option.option_id), None)
+
+
 def _hydrate_editor(item: CandidateItem) -> None:
+    _discard_editor_values()
+    options = tuple(
+        ResponseOption.model_validate(option.model_dump(mode="python"))
+        for option in item.options
+    )
     st.session_state[_stem_key(item.item_id)] = item.stem_zh
-    for option in item.options:
+    for option in options:
         st.session_state[_option_key(item.item_id, option.option_id)] = option.text_zh
     st.session_state["v2_review_hydrated_item"] = item.item_id
+    st.session_state["v2_review_base_stem"] = item.stem_zh
+    st.session_state["v2_review_base_options"] = options
+    st.session_state["v2_review_base_option_signature"] = _option_signature(options)
     st.session_state["v2_review_base_version"] = len(item.review_versions)
 
 
-def _ensure_editor_hydrated(item: CandidateItem) -> None:
+def _ensure_editor_hydrated(item: CandidateItem) -> tuple[ResponseOption, ...]:
+    options = _base_options(item.item_id)
     editor_keys = (
         _stem_key(item.item_id),
         *(
             _option_key(item.item_id, option.option_id)
-            for option in item.options
+            for option in options or ()
         ),
     )
     if (
-        st.session_state.get("v2_review_hydrated_item") != item.item_id
+        options is None
+        or not isinstance(st.session_state.get("v2_review_base_stem"), str)
         or not isinstance(st.session_state.get("v2_review_base_version"), int)
         or any(key not in st.session_state for key in editor_keys)
     ):
         _hydrate_editor(item)
         st.session_state.pop("v2_review_conflict_item", None)
+        options = _base_options(item.item_id)
+        if options is None:
+            raise RuntimeError("review editor hydration failed")
+    elif _option_signature(item.options) != st.session_state.get(
+        "v2_review_base_option_signature"
+    ):
+        st.session_state["v2_review_conflict_item"] = item.item_id
+    return options
 
 
 def _render_conflict_reload(item: CandidateItem) -> None:
@@ -270,7 +330,7 @@ def render(
     )
     st.session_state["v2_selected_item"] = item_id
     item = project.items[item_id]
-    _ensure_editor_hydrated(item)
+    base_options = _ensure_editor_hydrated(item)
 
     editor, trace = st.columns([1.8, 1.2], gap="large")
     with editor:
@@ -284,7 +344,7 @@ def render(
             key=_stem_key(item.item_id),
         )
         edited_options: dict[str, str] = {}
-        for option in sorted(item.options, key=lambda value: value.display_order):
+        for option in sorted(base_options, key=lambda value: value.display_order):
             edited_options[option.option_id] = st.text_input(
                 f"OPTION {option.display_order}",
                 key=_option_key(item.item_id, option.option_id),
@@ -320,7 +380,7 @@ def render(
                 st.error("Reviewer and note are required.")
             else:
                 try:
-                    snapshots = _option_snapshots(item, edited_options)
+                    snapshots = _option_snapshots(base_options, edited_options)
                     service.review_item(
                         project.config.project_id,
                         item.item_id,
@@ -333,15 +393,14 @@ def render(
                             "v2_review_base_version"
                         ],
                     )
-                except ValueError as exc:
-                    if str(exc).startswith("review version conflict:"):
-                        st.session_state["v2_review_conflict_item"] = item.item_id
-                        _render_conflict_reload(item)
-                    else:
-                        st.error(
-                            "Review could not be saved. "
-                            "Check the edited fields and current status."
-                        )
+                except ReviewVersionConflict:
+                    st.session_state["v2_review_conflict_item"] = item.item_id
+                    st.rerun()
+                except ValueError:
+                    st.error(
+                        "Review could not be saved. "
+                        "Check the edited fields and current status."
+                    )
                 except KeyError:
                     st.error(
                         "Review could not be saved. Check the edited fields and current status."

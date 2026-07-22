@@ -1,5 +1,7 @@
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from enum import Enum
+from types import MappingProxyType
 from typing import Annotated, Any
 
 from pydantic import (
@@ -7,11 +9,12 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    field_serializer,
     field_validator,
     model_validator,
 )
 
-from psychometric_v2.taxonomy import DOMAINS, FACETS
+from psychometric_v2.taxonomy import DOMAINS, FACETS, LEGACY_FEATURE_MAP
 
 
 def utc_now_iso() -> str:
@@ -32,6 +35,29 @@ def _validate_nonblank(value: str) -> str:
     if not value.strip():
         raise ValueError("value must not be blank")
     return value
+
+
+def _validate_identifier(value: str) -> str:
+    _validate_nonblank(value)
+    if value != value.strip():
+        raise ValueError("identifier must not contain surrounding whitespace")
+    return value
+
+
+def _validate_identifier_collection(values: tuple[str, ...]) -> tuple[str, ...]:
+    for value in values:
+        _validate_identifier(value)
+    if len(set(values)) != len(values):
+        raise ValueError("identifiers must be unique")
+    return values
+
+
+def _validate_taxonomy_pair(domain_id: str, facet_id: str) -> None:
+    facet = FACETS.get(facet_id)
+    if domain_id not in DOMAINS:
+        raise ValueError("domain_id must identify a known domain")
+    if facet is None or facet.domain_id != domain_id:
+        raise ValueError("facet_id must belong to domain_id")
 
 
 _AwareIsoString = Annotated[str, AfterValidator(_validate_timezone_aware_iso)]
@@ -68,29 +94,45 @@ class ReviewAction(str, Enum):
 
 
 class ProjectConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     project_id: str
     title: str
     population: str = "Mainland Chinese junior-secondary students"
-    age_min: int = Field(default=12, ge=0)
-    age_max: int = Field(default=15, ge=0)
+    age_min: int = Field(default=12, ge=0, le=120)
+    age_max: int = Field(default=15, ge=0, le=120)
     locale: str = "zh-CN"
-    context_domains: list[str] = Field(
-        default_factory=lambda: [
+    context_domains: tuple[str, ...] = Field(
+        default_factory=lambda: (
             "classroom",
             "group_work",
             "peer",
             "family",
             "club",
             "online",
-        ]
+        )
     )
     instruction_zh: str = "如果是你，你最可能怎么做？"
     prompt_version: str = "v2.0-demo"
 
-    @field_validator("project_id", "title", "instruction_zh")
+    @field_validator("project_id")
+    @classmethod
+    def validate_project_id(cls, value: str) -> str:
+        return _validate_identifier(value)
+
+    @field_validator(
+        "title", "population", "locale", "instruction_zh", "prompt_version"
+    )
     @classmethod
     def validate_nonblank_fields(cls, value: str) -> str:
         return _validate_nonblank(value)
+
+    @field_validator("context_domains")
+    @classmethod
+    def validate_context_domains(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if not values:
+            raise ValueError("context_domains must not be empty")
+        return _validate_identifier_collection(values)
 
     @model_validator(mode="after")
     def validate_age_range(self) -> "ProjectConfig":
@@ -100,6 +142,8 @@ class ProjectConfig(BaseModel):
 
 
 class ConstructAnchor(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     anchor_id: str
     item_number: int
     text_zh: str
@@ -109,20 +153,46 @@ class ConstructAnchor(BaseModel):
     reverse: bool
     source: str = "legacy_big_five_60"
 
+    @field_validator("anchor_id")
+    @classmethod
+    def validate_anchor_id(cls, value: str) -> str:
+        return _validate_identifier(value)
+
+    @model_validator(mode="after")
+    def validate_taxonomy_provenance(self) -> "ConstructAnchor":
+        _validate_taxonomy_pair(self.domain_id, self.facet_id)
+        if LEGACY_FEATURE_MAP.get(self.legacy_feature) != self.facet_id:
+            raise ValueError("legacy_feature must map exactly to facet_id")
+        return self
+
 
 class ConstructSpecification(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     domain_id: str
     facet_id: str
-    anchor_ids: list[str]
+    anchor_ids: tuple[str, ...]
     definition_zh: str
-    behavioral_indicators: list[str]
-    exclusions: list[str]
-    potential_confounds: list[str]
+    behavioral_indicators: tuple[str, ...]
+    exclusions: tuple[str, ...]
+    potential_confounds: tuple[str, ...]
+
+    @field_validator("anchor_ids")
+    @classmethod
+    def validate_anchor_ids(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _validate_identifier_collection(values)
+
+    @model_validator(mode="after")
+    def validate_taxonomy(self) -> "ConstructSpecification":
+        _validate_taxonomy_pair(self.domain_id, self.facet_id)
+        return self
 
 
 class ScenarioBlueprint(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     setting: str
-    actors: list[str]
+    actors: tuple[str, ...]
     relationship: str
     goal: str
     trigger_event: str
@@ -140,6 +210,11 @@ class ResponseOption(BaseModel):
     display_order: int = Field(ge=1, le=4)
     rationale: str
     desirability_note: str
+
+    @field_validator("option_id")
+    @classmethod
+    def validate_option_id(cls, value: str) -> str:
+        return _validate_identifier(value)
 
 
 def _validate_option_set(
@@ -172,6 +247,8 @@ def _validate_option_set(
 
 
 class QualityCheck(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     check_id: str
     label: str
     severity: CheckSeverity
@@ -202,38 +279,40 @@ class ReviewVersion(BaseModel):
 
 
 class CandidateItem(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     item_id: str
     domain_id: str
     facet_id: str
-    anchor_ids: list[str] = Field(min_length=1)
+    anchor_ids: tuple[str, ...] = Field(min_length=1)
     instruction_zh: str
     stem_zh: str
     construct_spec: ConstructSpecification | None = None
     scenario_blueprint: ScenarioBlueprint | None = None
     options: tuple[ResponseOption, ...]
-    quality_checks: list[QualityCheck] = Field(default_factory=list)
+    quality_checks: tuple[QualityCheck, ...] = Field(default_factory=tuple)
     evidence_status: EvidenceStatus = EvidenceStatus.MODEL_DRAFT
     generation_mode: GenerationMode = GenerationMode.CURATED
     model_id: str | None = None
     prompt_version: str = "v2.0-demo"
     created_at: _AwareIsoString = Field(default_factory=utc_now_iso)
-    review_versions: list[ReviewVersion] = Field(default_factory=list)
+    review_versions: tuple[ReviewVersion, ...] = Field(default_factory=tuple)
+
+    @field_validator("item_id")
+    @classmethod
+    def validate_item_id(cls, value: str) -> str:
+        return _validate_identifier(value)
+
+    @field_validator("anchor_ids")
+    @classmethod
+    def validate_anchor_ids(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _validate_identifier_collection(values)
 
     @model_validator(mode="after")
     def validate_contract(self) -> "CandidateItem":
         _validate_option_set(self.options)
 
-        facet = FACETS.get(self.facet_id)
-        if self.domain_id not in DOMAINS:
-            raise ValueError("domain_id must identify a known domain")
-        if facet is None or facet.domain_id != self.domain_id:
-            raise ValueError("facet_id must belong to domain_id")
-
-        normalized_anchor_ids = [anchor_id.strip() for anchor_id in self.anchor_ids]
-        if any(not anchor_id for anchor_id in normalized_anchor_ids):
-            raise ValueError("anchor IDs must not be blank")
-        if len(set(normalized_anchor_ids)) != len(normalized_anchor_ids):
-            raise ValueError("anchor IDs must be unique")
+        _validate_taxonomy_pair(self.domain_id, self.facet_id)
 
         if self.construct_spec is not None:
             if self.construct_spec.domain_id != self.domain_id:
@@ -246,10 +325,27 @@ class CandidateItem(BaseModel):
 
 
 class ResearchProject(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     config: ProjectConfig
-    items: dict[str, CandidateItem] = Field(default_factory=dict)
+    items: Mapping[str, CandidateItem] = Field(
+        default_factory=lambda: MappingProxyType({})
+    )
     selected_item_id: str | None = None
     updated_at: _AwareIsoString = Field(default_factory=utc_now_iso)
+
+    @field_validator("items")
+    @classmethod
+    def freeze_items(
+        cls, items: Mapping[str, CandidateItem]
+    ) -> Mapping[str, CandidateItem]:
+        return MappingProxyType(dict(items))
+
+    @field_serializer("items")
+    def serialize_items(
+        self, items: Mapping[str, CandidateItem]
+    ) -> dict[str, CandidateItem]:
+        return dict(items)
 
     @model_validator(mode="after")
     def validate_item_references(self) -> "ResearchProject":

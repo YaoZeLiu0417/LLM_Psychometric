@@ -6,11 +6,15 @@ from pydantic import ValidationError
 
 from psychometric_v2.models import (
     CandidateItem,
+    CheckOutcome,
+    CheckSeverity,
+    ConstructAnchor,
     ConstructSpecification,
     EvidenceStatus,
     GenerationMetadata,
     GenerationMode,
     ProjectConfig,
+    QualityCheck,
     ResearchProject,
     ResponseOption,
     ReviewAction,
@@ -68,6 +72,44 @@ def make_review(**changes: object) -> ReviewVersion:
     }
     values.update(changes)
     return ReviewVersion(**values)
+
+
+def make_anchor(**changes: object) -> ConstructAnchor:
+    values: dict[str, object] = {
+        "anchor_id": "bfi2-sociability-01",
+        "item_number": 1,
+        "text_zh": "我很外向，喜欢社交。",
+        "legacy_feature": "外向性、社交",
+        "domain_id": "extraversion",
+        "facet_id": "sociability",
+        "reverse": False,
+    }
+    values.update(changes)
+    return ConstructAnchor(**values)
+
+
+def make_construct_spec(**changes: object) -> ConstructSpecification:
+    values: dict[str, object] = {
+        "domain_id": "extraversion",
+        "facet_id": "sociability",
+        "anchor_ids": ["bfi2-sociability-01"],
+        "definition_zh": "定义",
+        "behavioral_indicators": ["行为"],
+        "exclusions": [],
+        "potential_confounds": [],
+    }
+    values.update(changes)
+    return ConstructSpecification(**values)
+
+
+def make_quality_check() -> QualityCheck:
+    return QualityCheck(
+        check_id="age-fit",
+        label="年龄适配",
+        severity=CheckSeverity.INFO,
+        outcome=CheckOutcome.PASS,
+        evidence="语言适合目标年龄。",
+    )
 
 
 def test_candidate_requires_four_unique_score_levels() -> None:
@@ -174,7 +216,7 @@ def test_candidate_requires_nonblank_unique_anchor_ids(
     [
         ConstructSpecification(
             domain_id="agreeableness",
-            facet_id="sociability",
+            facet_id="compassion",
             anchor_ids=["bfi2-sociability-01"],
             definition_zh="定义",
             behavioral_indicators=["行为"],
@@ -231,14 +273,8 @@ def test_candidate_construct_spec_must_match_provenance(
             make_option(4, 4),
         ],
         [
-            make_option(1, 1, option_id=" "),
-            make_option(2, 2),
-            make_option(3, 3),
-            make_option(4, 4),
-        ],
-        [
             make_option(1, 1, option_id="same"),
-            make_option(2, 2, option_id=" same "),
+            make_option(2, 2, option_id="same"),
             make_option(3, 3),
             make_option(4, 4),
         ],
@@ -260,7 +296,6 @@ def test_candidate_construct_spec_must_match_provenance(
         "scores",
         "trait-level-match",
         "display-order",
-        "blank-id",
         "duplicate-id",
         "blank-text",
         "duplicate-text",
@@ -350,3 +385,169 @@ def test_json_round_trip_preserves_models_and_enum_values() -> None:
     assert payload["evidence_status"] == "HUMAN_REVIEWED"
     assert payload["generation_mode"] == "LIVE GENERATION"
     assert restored == item
+
+
+def test_project_config_is_a_durable_immutable_snapshot() -> None:
+    config = ProjectConfig(project_id="p", title="Project")
+
+    assert isinstance(config.context_domains, tuple)
+    with pytest.raises(ValidationError):
+        config.title = "Changed"
+    with pytest.raises(TypeError):
+        config.context_domains[0] = "changed"  # type: ignore[index]
+
+
+def test_candidate_rejects_field_assignment_after_validation() -> None:
+    item = make_candidate()
+
+    with pytest.raises(ValidationError):
+        item.domain_id = "agreeableness"
+
+
+def test_candidate_nested_collections_are_durable_snapshots() -> None:
+    item = make_candidate(
+        construct_spec=make_construct_spec(),
+        quality_checks=[make_quality_check()],
+        review_versions=[make_review()],
+    )
+
+    assert isinstance(item.anchor_ids, tuple)
+    assert isinstance(item.quality_checks, tuple)
+    assert isinstance(item.review_versions, tuple)
+    with pytest.raises(TypeError):
+        item.anchor_ids[0] = "changed"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        item.quality_checks[0] = make_quality_check()  # type: ignore[index]
+    with pytest.raises(ValidationError):
+        item.quality_checks[0].evidence = "changed"
+    with pytest.raises(TypeError):
+        item.review_versions[0] = make_review()  # type: ignore[index]
+    with pytest.raises(ValidationError):
+        item.construct_spec.domain_id = "agreeableness"  # type: ignore[union-attr]
+    with pytest.raises(TypeError):
+        item.construct_spec.anchor_ids[0] = "changed"  # type: ignore[index,union-attr]
+
+
+def test_research_project_rejects_field_and_items_mutation() -> None:
+    item = make_candidate()
+    project = ResearchProject(
+        config=ProjectConfig(project_id="p", title="Project"),
+        items={item.item_id: item},
+        selected_item_id=item.item_id,
+    )
+
+    with pytest.raises(ValidationError):
+        project.selected_item_id = None
+    with pytest.raises(TypeError):
+        project.items["other"] = item  # type: ignore[index]
+
+
+def test_research_project_json_round_trip_preserves_references() -> None:
+    item = make_candidate()
+    project = ResearchProject(
+        config=ProjectConfig(project_id="p", title="Project"),
+        items={item.item_id: item},
+        selected_item_id=item.item_id,
+    )
+
+    payload = project.model_dump_json()
+    restored = ResearchProject.model_validate_json(payload)
+
+    assert restored == project
+    assert restored.selected_item_id in restored.items
+    with pytest.raises(TypeError):
+        restored.items["other"] = item  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"domain_id": "unknown"},
+        {"domain_id": "agreeableness"},
+        {"facet_id": "assertiveness"},
+        {"legacy_feature": "外向性、果断"},
+        {"legacy_feature": "unknown"},
+    ],
+)
+def test_construct_anchor_rejects_invalid_taxonomy_provenance(
+    changes: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        make_anchor(**changes)
+
+
+@pytest.mark.parametrize(
+    ("domain_id", "facet_id"),
+    [
+        ("unknown", "sociability"),
+        ("agreeableness", "sociability"),
+    ],
+)
+def test_construct_specification_requires_a_valid_taxonomy_pair(
+    domain_id: str, facet_id: str
+) -> None:
+    with pytest.raises(ValidationError):
+        make_construct_spec(domain_id=domain_id, facet_id=facet_id)
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: ProjectConfig(project_id=" project ", title="Project"),
+        lambda: make_anchor(anchor_id=" anchor-1 "),
+        lambda: make_construct_spec(anchor_ids=[" anchor-1 "]),
+        lambda: make_candidate(item_id=" item-1 "),
+        lambda: make_candidate(anchor_ids=[" anchor-1 "]),
+        lambda: make_option(1, 1, option_id=" "),
+        lambda: make_option(1, 1, option_id=" o1 "),
+    ],
+    ids=[
+        "project",
+        "anchor",
+        "construct-spec",
+        "candidate",
+        "candidate-anchor",
+        "option-blank",
+        "option",
+    ],
+)
+def test_lookup_identifiers_reject_surrounding_whitespace(
+    factory: Callable[[], object],
+) -> None:
+    with pytest.raises(ValidationError):
+        factory()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"population": " "},
+        {"locale": ""},
+        {"prompt_version": "\t"},
+        {"context_domains": []},
+        {"context_domains": ["classroom", "classroom"]},
+        {"context_domains": ["classroom", " classroom "]},
+        {"context_domains": ["classroom", " "]},
+    ],
+)
+def test_project_config_rejects_invalid_research_context(
+    changes: dict[str, object],
+) -> None:
+    values: dict[str, object] = {"project_id": "p", "title": "Project"}
+    values.update(changes)
+
+    with pytest.raises(ValidationError):
+        ProjectConfig(**values)
+
+
+def test_project_config_supports_general_age_ranges_with_an_upper_bound() -> None:
+    config = ProjectConfig(
+        project_id="p",
+        title="Adult project",
+        age_min=18,
+        age_max=65,
+    )
+
+    assert (config.age_min, config.age_max) == (18, 65)
+    with pytest.raises(ValidationError):
+        ProjectConfig(project_id="p", title="Invalid", age_min=18, age_max=121)

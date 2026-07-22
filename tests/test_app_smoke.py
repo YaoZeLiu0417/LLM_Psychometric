@@ -1231,6 +1231,83 @@ render(project, load_anchor_asset(ANCHOR_ASSET), WorkbenchService(repository))
     assert _button(app, "PROMOTE TO PILOT").disabled is False
 
 
+def test_review_rejects_stale_editor_and_reloads_current_version(tmp_path) -> None:
+    repository_root = tmp_path / "projects"
+    app = AppTest.from_string(
+        f"""
+from pathlib import Path
+
+from psychometric_v2.config import ANCHOR_ASSET
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.legacy import load_anchor_asset
+from psychometric_v2.repository import JsonProjectRepository
+from psychometric_v2.ui.pages.review import render
+from psychometric_v2.ui.state import init_state
+from psychometric_v2.workbench import WorkbenchService
+
+repository = JsonProjectRepository(Path({str(repository_root)!r}))
+project = repository.ensure_seed(build_demo_project())
+init_state()
+render(project, load_anchor_asset(ANCHOR_ASSET), WorkbenchService(repository))
+        """,
+        default_timeout=10,
+    ).run()
+    selected_id = app.session_state["v2_review_item"]
+    stale_stem = "Stale editor revision"
+    external_stem = "Externally persisted revision"
+    _widget_with_key(
+        app.text_area,
+        f"v2_review_stem_{selected_id}",
+    ).set_value(stale_stem)
+    _widget_with_key(app.text_input, "v2_review_reviewer").set_value("reviewer-a")
+    _widget_with_key(app.text_input, "v2_review_note").set_value("stale save")
+
+    repository = JsonProjectRepository(repository_root)
+    persisted = repository.load(build_demo_project().config.project_id)
+    item = persisted.items[selected_id]
+    WorkbenchService(repository).review_item(
+        persisted.config.project_id,
+        selected_id,
+        external_stem,
+        item.options,
+        "reviewer-b",
+        ReviewAction.EDIT,
+        "external save",
+        expected_version=0,
+    )
+
+    _button(app, "SAVE REVISION").click().run()
+
+    assert not app.exception
+    assert app.error
+    assert app.error[0].value == (
+        "This item has a newer saved version. "
+        "Reload the current version before continuing."
+    )
+    assert app.session_state["v2_review_base_version"] == 0
+    assert _widget_with_key(
+        app.text_area,
+        f"v2_review_stem_{selected_id}",
+    ).value == stale_stem
+    after_conflict = repository.load(persisted.config.project_id).items[selected_id]
+    assert len(after_conflict.review_versions) == 1
+    assert after_conflict.stem_zh == external_stem
+    assert after_conflict.review_versions[0].note == "external save"
+
+    _button(app, "RELOAD CURRENT VERSION").click().run()
+
+    assert not app.exception
+    assert not app.error
+    assert app.session_state["v2_review_hydrated_item"] == selected_id
+    assert app.session_state["v2_review_base_version"] == 1
+    assert _widget_with_key(
+        app.text_area,
+        f"v2_review_stem_{selected_id}",
+    ).value == external_stem
+    after_reload = repository.load(persisted.config.project_id).items[selected_id]
+    assert after_reload == after_conflict
+
+
 def test_review_selection_updates_header_mode_in_the_same_rerun() -> None:
     app = AppTest.from_string(
         """

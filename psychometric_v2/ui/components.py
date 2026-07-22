@@ -29,6 +29,12 @@ STAGES = (
 )
 
 
+class _NavigationPage(str):
+    # Streamlit 1.45 AppTest serializes button-group values as iterables.
+    def __iter__(self):
+        return iter((str(self),))
+
+
 def _e(value: object) -> str:
     return html.escape(str(value), quote=True)
 
@@ -57,13 +63,22 @@ def render_header(project: ResearchProject, *, live_available: bool) -> None:
 
 
 def render_navigation() -> str:
+    active_page = st.session_state.get("v2_active_page", PAGES[0])
+    if active_page not in PAGES:
+        active_page = PAGES[0]
+    options = tuple(_NavigationPage(page) for page in PAGES)
     selected = st.segmented_control(
         "Workspace page",
-        options=PAGES,
-        key="v2_active_page",
+        options=options,
+        default=active_page,
+        key="v2_navigation",
         label_visibility="collapsed",
     )
-    return selected if selected in PAGES else "PROJECT"
+    if selected in PAGES:
+        selected_page = str(selected)
+        st.session_state["v2_active_page"] = selected_page
+        return selected_page
+    return active_page
 
 
 def _status_presentation(status: str | EvidenceStatus) -> tuple[str, str, str, str]:

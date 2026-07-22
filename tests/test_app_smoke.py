@@ -88,6 +88,28 @@ def test_each_page_can_be_loaded_from_preset_session_state() -> None:
             assert expected in markdown, (page, expected)
 
 
+def test_navigation_survives_reruns_and_writes_active_page() -> None:
+    app = _run_app("PROJECT")
+    navigation = app.get("button_group")[0]
+
+    assert not app.exception
+    assert navigation.key == "v2_navigation"
+    assert app.session_state["v2_active_page"] == "PROJECT"
+
+    app.run()
+    assert not app.exception
+    assert app.session_state["v2_active_page"] == "PROJECT"
+
+    app.get("button_group")[0].set_value(["REVIEW"]).run()
+    assert not app.exception
+    assert app.session_state["v2_active_page"] == "REVIEW"
+    assert "REVIEW QUEUE" in _markdown(app)
+
+    app.run()
+    assert not app.exception
+    assert app.session_state["v2_active_page"] == "REVIEW"
+
+
 def test_review_queue_and_participant_view_keep_roles_separate() -> None:
     review = _run_app("REVIEW")
     assert len(review.dataframe) == 1
@@ -198,20 +220,26 @@ def test_live_button_follows_environment_without_calling_a_model(monkeypatch) ->
     assert available.button[0].key == "v2_live_generation"
     assert available.button[0].disabled is False
 
-    studio = AppTest.from_string(
-        """
-from psychometric_v2.config import ANCHOR_ASSET
-from psychometric_v2.demo_seed import build_demo_project
-from psychometric_v2.legacy import load_anchor_asset
-from psychometric_v2.ui.pages.generation import render
+    available.button[0].click().run()
+    assert not available.exception
+    assert available.session_state["v2_generation_mode"] == "LIVE GENERATION"
+    live_text = _markdown(available)
+    assert '<span class="mode-badge">LIVE GENERATION</span>' in live_text
+    assert "LIVE WORKSPACE READY" in live_text
+    assert "CURATED SEED" not in live_text
+    assert "新学期社团第一次活动" not in live_text
+    assert "主动和附近几位同学打招呼" not in live_text
+    assert "PROVENANCE" not in live_text
+    assert [button.key for button in available.button] == ["v2_return_curated"]
 
-render(build_demo_project(), load_anchor_asset(ANCHOR_ASSET), None)
-        """
-    ).run()
-    assert not studio.exception
-    assert studio.button[0].disabled is False
+    available.run()
+    assert not available.exception
+    assert "CURATED SEED" not in _markdown(available)
 
-    studio.button[0].click().run()
-    assert not studio.exception
-    assert studio.session_state["v2_generation_mode"] == "LIVE GENERATION"
-    assert "CURATED SEED" in _markdown(studio)
+    available.button[0].click().run()
+    assert not available.exception
+    assert available.session_state["v2_generation_mode"] == "CURATED DEMO"
+    curated_text = _markdown(available)
+    assert '<span class="mode-badge">CURATED DEMO</span>' in curated_text
+    assert "CURATED SEED" in curated_text
+    assert "PROVENANCE" in curated_text

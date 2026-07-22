@@ -26,6 +26,33 @@ def render(
     service: WorkbenchService,
 ) -> None:
     del service
+    try:
+        LiveModelConfig.from_env()
+    except ModelUnavailable:
+        live_available = False
+    else:
+        live_available = True
+
+    if st.session_state.get("v2_generation_mode") == "LIVE GENERATION":
+        st.markdown('<div class="page-kicker">CONFIGURED GENERATION PIPELINE</div>', unsafe_allow_html=True)
+        st.markdown('<div class="workspace-heading">GENERATION STUDIO</div>', unsafe_allow_html=True)
+        if st.button(
+            "RETURN TO CURATED DEMO",
+            key="v2_return_curated",
+            icon=":material/undo:",
+        ):
+            st.session_state["v2_generation_mode"] = "CURATED DEMO"
+            st.rerun()
+        readiness = "LIVE WORKSPACE READY" if live_available else "LIVE CONFIGURATION REQUIRED"
+        st.markdown(f'<div class="unit-statement">{_e(readiness)}</div>', unsafe_allow_html=True)
+        render_generation_stepper()
+        st.markdown(
+            '<div class="tool-band"><div class="field-label">WORKSPACE STATE</div>'
+            '<div class="detail-value">AWAITING LIVE GENERATION INPUT</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
     item = selected_item(project)
     spec = item.construct_spec
     blueprint = item.scenario_blueprint
@@ -34,12 +61,6 @@ def render(
 
     st.markdown('<div class="page-kicker">READ-ONLY CURATED PIPELINE</div>', unsafe_allow_html=True)
     st.markdown('<div class="workspace-heading">GENERATION STUDIO</div>', unsafe_allow_html=True)
-    try:
-        LiveModelConfig.from_env()
-    except ModelUnavailable:
-        live_available = False
-    else:
-        live_available = True
     if st.button(
         "ENTER LIVE MODE",
         key="v2_live_generation",
@@ -47,6 +68,7 @@ def render(
         disabled=not live_available,
     ):
         st.session_state["v2_generation_mode"] = "LIVE GENERATION"
+        st.rerun()
     st.markdown(
         '<div class="lineage-band">SOURCE ANCHOR -&gt; FACET -&gt; SPEC -&gt; BLUEPRINT -&gt; OPTIONS -&gt; CHECKS -&gt; REVIEW</div>',
         unsafe_allow_html=True,

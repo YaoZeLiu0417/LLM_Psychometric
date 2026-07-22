@@ -204,8 +204,9 @@ def test_pipeline_repairs_invalid_options_once_and_merges_quality_checks() -> No
     )
     pipeline = GenerationPipeline(client, anchor_asset=ANCHOR_ASSET)
     anchor = pipeline.load_anchor("bfi2-sociability-01")
+    config = project_config()
 
-    candidate = pipeline.generate_candidate(project_config(), anchor, "club")
+    candidate = pipeline.generate_candidate(config, anchor, "club")
 
     assert len(client.calls) == 5
     repair_system, repair_user = client.calls[3]
@@ -225,10 +226,44 @@ def test_pipeline_repairs_invalid_options_once_and_merges_quality_checks() -> No
     assert candidate.generation_mode is GenerationMode.LIVE
     assert candidate.model_id == "fake-model"
     assert candidate.prompt_version == "v2.1-test"
+    assert candidate.generation_metadata is not None
+    assert candidate.generation_metadata.model_id == candidate.model_id
+    assert candidate.generation_metadata.prompt_version == candidate.prompt_version
+    assert candidate.generation_metadata.model_dump(mode="json")[
+        "constraint_snapshot"
+    ] == {
+        "project_config": config.model_dump(mode="json"),
+        "domain_id": anchor.domain_id,
+        "facet_id": anchor.facet_id,
+        "anchor_ids": [anchor.anchor_id],
+        "context_domain": "club",
+    }
     assert candidate.item_id.startswith("live-sociability-")
     check_ids = {check.check_id for check in candidate.quality_checks}
     assert "OPTION_COUNT" in check_ids
     assert set(REQUIRED_QUALITY_IDS).issubset(check_ids)
+
+
+def test_pipeline_repairs_blank_option_provenance_once() -> None:
+    invalid = options_payload()
+    invalid["options"][0]["rationale"] = " "  # type: ignore[index]
+    client = QueueClient([invalid, options_payload()])
+    pipeline = GenerationPipeline(client)
+    anchor = pipeline.load_anchor("bfi2-sociability-01")
+    spec = ConstructSpecification(
+        domain_id=anchor.domain_id,
+        facet_id=anchor.facet_id,
+        anchor_ids=(anchor.anchor_id,),
+        **construct_payload(),
+    )
+    blueprint = ScenarioBlueprint(**blueprint_payload())
+
+    candidate = pipeline.options(spec, blueprint, project_config())
+
+    assert len(client.calls) == 2
+    assert "rationale" in client.calls[1][1]
+    assert all(option.rationale.strip() for option in candidate.options)
+    assert all(option.desirability_note.strip() for option in candidate.options)
 
 
 def test_pipeline_repairs_model_check_id_collision_before_merge() -> None:

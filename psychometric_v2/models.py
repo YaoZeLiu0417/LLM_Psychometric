@@ -293,6 +293,11 @@ class ResponseOption(_ValidatedFrozenModel):
     def validate_option_id(cls, value: str) -> str:
         return _validate_identifier(value)
 
+    @field_validator("rationale", "desirability_note")
+    @classmethod
+    def validate_provenance(cls, value: str) -> str:
+        return _validate_nonblank(value)
+
 
 def _validate_option_set(
     options: tuple[ResponseOption, ...],
@@ -351,6 +356,53 @@ class ReviewVersion(_ValidatedFrozenModel):
         return _validate_option_set(options)
 
 
+def _freeze_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise ValueError("constraint snapshot mapping keys must be strings")
+        return FrozenMapping(
+            (key, _freeze_json_value(nested)) for key, nested in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_json_value(nested) for nested in value)
+    if isinstance(value, float) and not isfinite(value):
+        raise ValueError("constraint snapshot floats must be finite")
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise ValueError("constraint snapshot values must be JSON-compatible")
+
+
+def _thaw_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_json_value(nested) for key, nested in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json_value(nested) for nested in value]
+    return value
+
+
+class GenerationMetadata(_ValidatedFrozenModel):
+    model_id: str
+    prompt_version: str
+    generated_at: _AwareIsoString = Field(default_factory=utc_now_iso)
+    constraint_snapshot: Mapping[str, Any]
+
+    @field_validator("model_id", "prompt_version")
+    @classmethod
+    def validate_identifiers(cls, value: str) -> str:
+        return _validate_nonblank(value)
+
+    @field_validator("constraint_snapshot")
+    @classmethod
+    def freeze_constraint_snapshot(
+        cls, snapshot: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        return _freeze_json_value(snapshot)
+
+    @field_serializer("constraint_snapshot")
+    def serialize_constraint_snapshot(self, snapshot: Mapping[str, Any]) -> Any:
+        return _thaw_json_value(snapshot)
+
+
 class CandidateItem(_ValidatedFrozenModel):
     item_id: str
     domain_id: str
@@ -366,6 +418,7 @@ class CandidateItem(_ValidatedFrozenModel):
     generation_mode: GenerationMode = GenerationMode.CURATED
     model_id: str | None = None
     prompt_version: str = "v2.0-demo"
+    generation_metadata: GenerationMetadata | None = None
     created_at: _AwareIsoString = Field(default_factory=utc_now_iso)
     review_versions: tuple[ReviewVersion, ...] = Field(default_factory=tuple)
 
@@ -392,6 +445,20 @@ class CandidateItem(_ValidatedFrozenModel):
                 raise ValueError("construct specification facet must match candidate")
             if self.construct_spec.anchor_ids != self.anchor_ids:
                 raise ValueError("construct specification anchors must match candidate")
+
+        if self.generation_mode is GenerationMode.LIVE:
+            if not isinstance(self.model_id, str) or not self.model_id.strip():
+                raise ValueError("LIVE candidates require a nonblank model_id")
+            if self.generation_metadata is None:
+                raise ValueError("LIVE candidates require generation_metadata")
+            if self.generation_metadata.model_id != self.model_id:
+                raise ValueError(
+                    "generation metadata model_id must match candidate model_id"
+                )
+            if self.generation_metadata.prompt_version != self.prompt_version:
+                raise ValueError(
+                    "generation metadata prompt_version must match candidate prompt_version"
+                )
         return self
 
 
@@ -423,45 +490,3 @@ class ResearchProject(_ValidatedFrozenModel):
         if self.selected_item_id is not None and self.selected_item_id not in self.items:
             raise ValueError("selected_item_id must identify an item in the project")
         return self
-
-
-def _freeze_json_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        if any(not isinstance(key, str) for key in value):
-            raise ValueError("constraint snapshot mapping keys must be strings")
-        return FrozenMapping(
-            (key, _freeze_json_value(nested)) for key, nested in value.items()
-        )
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze_json_value(nested) for nested in value)
-    if isinstance(value, float) and not isfinite(value):
-        raise ValueError("constraint snapshot floats must be finite")
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    raise ValueError("constraint snapshot values must be JSON-compatible")
-
-
-def _thaw_json_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _thaw_json_value(nested) for key, nested in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw_json_value(nested) for nested in value]
-    return value
-
-
-class GenerationMetadata(_ValidatedFrozenModel):
-    model_id: str
-    prompt_version: str
-    generated_at: _AwareIsoString = Field(default_factory=utc_now_iso)
-    constraint_snapshot: Mapping[str, Any]
-
-    @field_validator("constraint_snapshot")
-    @classmethod
-    def freeze_constraint_snapshot(
-        cls, snapshot: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        return _freeze_json_value(snapshot)
-
-    @field_serializer("constraint_snapshot")
-    def serialize_constraint_snapshot(self, snapshot: Mapping[str, Any]) -> Any:
-        return _thaw_json_value(snapshot)

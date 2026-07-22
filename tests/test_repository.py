@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from threading import Event, Thread, current_thread
@@ -7,6 +8,8 @@ import pytest
 from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.models import (
     EvidenceStatus,
+    GenerationMetadata,
+    GenerationMode,
     ResearchProject,
     ReviewAction,
     ReviewVersion,
@@ -171,6 +174,7 @@ def test_demo_seed_has_exact_curated_content_and_provenance() -> None:
         assert item.stem_zh == expected["stem_zh"]
         assert item.evidence_status.value == "MODEL_DRAFT"
         assert item.generation_mode.value == "CURATED DEMO"
+        assert item.generation_metadata is None
         assert item.review_versions == ()
 
         spec = item.construct_spec
@@ -224,6 +228,60 @@ def test_repository_round_trip_is_lossless(tmp_path: Path) -> None:
     assert destination.read_text(encoding="utf-8") == project.model_dump_json(indent=2)
     assert restored == project
     assert not list(destination.parent.glob(f".{destination.name}.*.tmp"))
+
+
+def test_repository_round_trip_preserves_live_generation_metadata(
+    tmp_path: Path,
+) -> None:
+    repository = JsonProjectRepository(tmp_path / "projects")
+    project = build_demo_project()
+    base = project.items[project.selected_item_id]
+    metadata = GenerationMetadata(
+        model_id="fake-model",
+        prompt_version=base.prompt_version,
+        constraint_snapshot={
+            "project_config": project.config.model_dump(mode="json"),
+            "domain_id": base.domain_id,
+            "facet_id": base.facet_id,
+            "anchor_ids": list(base.anchor_ids),
+            "context_domain": base.scenario_blueprint.context_domain,
+        },
+    )
+    live = base.validated_update(
+        item_id="live-repository-round-trip",
+        generation_mode=GenerationMode.LIVE,
+        model_id=metadata.model_id,
+        generation_metadata=metadata,
+    )
+    expanded = project.validated_update(
+        items={**dict(project.items), live.item_id: live},
+        selected_item_id=live.item_id,
+    )
+
+    repository.save(expanded)
+    restored = repository.load(project.config.project_id)
+
+    assert restored.items[live.item_id].generation_metadata == metadata
+    assert restored == expanded
+
+
+def test_repository_loads_legacy_curated_json_without_generation_metadata(
+    tmp_path: Path,
+) -> None:
+    repository = JsonProjectRepository(tmp_path / "projects")
+    project = build_demo_project()
+    payload = project.model_dump(mode="json")
+    for item in payload["items"].values():
+        item.pop("generation_metadata", None)
+    destination = repository.path_for(project.config.project_id)
+    destination.write_text(
+        json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    restored = repository.load(project.config.project_id)
+
+    assert all(item.generation_metadata is None for item in restored.items.values())
 
 
 def test_save_intentionally_replaces_an_existing_project(tmp_path: Path) -> None:

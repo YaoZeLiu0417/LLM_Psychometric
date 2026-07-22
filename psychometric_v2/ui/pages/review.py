@@ -276,6 +276,7 @@ def render(
                         reviewer,
                         action_clicked,
                         note,
+                        expected_version=len(item.review_versions),
                     )
                 except (KeyError, ValueError):
                     st.error(

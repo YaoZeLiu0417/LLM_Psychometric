@@ -4,6 +4,11 @@ import json
 
 from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.exports import project_csv_bytes, project_json_bytes
+from psychometric_v2.models import (
+    GenerationMetadata,
+    GenerationMode,
+    ResearchProject,
+)
 
 
 CSV_COLUMNS = (
@@ -40,6 +45,38 @@ def test_json_export_is_complete_utf8_project_without_preview_responses() -> Non
         assert item_payload["scenario_blueprint"] is not None
     assert "participant" not in decoded.lower()
     assert "preview_responses" not in decoded.lower()
+
+
+def test_json_export_round_trip_preserves_live_generation_metadata() -> None:
+    project = build_demo_project()
+    base = project.items[project.selected_item_id]
+    metadata = GenerationMetadata(
+        model_id="fake-model",
+        prompt_version=base.prompt_version,
+        constraint_snapshot={
+            "project_config": project.config.model_dump(mode="json"),
+            "domain_id": base.domain_id,
+            "facet_id": base.facet_id,
+            "anchor_ids": list(base.anchor_ids),
+            "context_domain": base.scenario_blueprint.context_domain,
+        },
+    )
+    live = base.validated_update(
+        item_id="live-export-round-trip",
+        generation_mode=GenerationMode.LIVE,
+        model_id=metadata.model_id,
+        generation_metadata=metadata,
+    )
+    expanded = project.validated_update(
+        items={**dict(project.items), live.item_id: live},
+        selected_item_id=live.item_id,
+    )
+
+    exported = project_json_bytes(expanded)
+    restored = ResearchProject.model_validate_json(exported)
+
+    assert restored.items[live.item_id].generation_metadata == metadata
+    assert restored == expanded
 
 
 def test_csv_export_has_bom_exact_columns_and_ordered_option_rows() -> None:

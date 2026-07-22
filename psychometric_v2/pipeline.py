@@ -21,6 +21,7 @@ from psychometric_v2.models import (
     ConstructAnchor,
     ConstructSpecification,
     EvidenceStatus,
+    GenerationMetadata,
     GenerationMode,
     ProjectConfig,
     QualityCheck,
@@ -286,6 +287,17 @@ class GenerationPipeline:
             options_prompt(spec, blueprint, config),
             _OptionsResponse,
         )
+        generation_metadata = GenerationMetadata(
+            model_id=self.client.model_id,
+            prompt_version=config.prompt_version,
+            constraint_snapshot={
+                "project_config": config.model_dump(mode="json"),
+                "domain_id": spec.domain_id,
+                "facet_id": spec.facet_id,
+                "anchor_ids": list(spec.anchor_ids),
+                "context_domain": blueprint.context_domain,
+            },
+        )
         return CandidateItem(
             item_id=f"live-{spec.facet_id}-{uuid4().hex}",
             domain_id=spec.domain_id,
@@ -300,6 +312,7 @@ class GenerationPipeline:
             generation_mode=GenerationMode.LIVE,
             model_id=self.client.model_id,
             prompt_version=config.prompt_version,
+            generation_metadata=generation_metadata,
         )
 
     def quality(

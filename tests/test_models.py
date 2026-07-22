@@ -159,6 +159,26 @@ def test_validated_is_not_an_allowed_evidence_status() -> None:
     assert "VALIDATED" not in {status.value for status in EvidenceStatus}
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("rationale", ""),
+        ("rationale", "   "),
+        ("desirability_note", ""),
+        ("desirability_note", "\t"),
+    ],
+)
+def test_response_option_requires_nonblank_provenance(
+    field: str,
+    value: str,
+) -> None:
+    payload = make_option(1, 1).model_dump(mode="python")
+    payload[field] = value
+
+    with pytest.raises(ValidationError, match="must not be blank"):
+        ResponseOption.model_validate(payload)
+
+
 def test_list_input_is_normalized_to_immutable_options() -> None:
     item = make_candidate(options=make_options())
 
@@ -379,9 +399,12 @@ def test_persisted_timestamps_must_be_timezone_aware(
 
 
 def test_json_round_trip_preserves_models_and_enum_values() -> None:
+    metadata = make_generation_metadata()
     item = make_candidate(
         evidence_status=EvidenceStatus.HUMAN_REVIEWED,
         generation_mode=GenerationMode.LIVE,
+        model_id=metadata.model_id,
+        generation_metadata=metadata,
         created_at="2026-07-22T12:00:00+09:00",
     )
 
@@ -390,6 +413,7 @@ def test_json_round_trip_preserves_models_and_enum_values() -> None:
 
     assert payload["evidence_status"] == "HUMAN_REVIEWED"
     assert payload["generation_mode"] == "LIVE GENERATION"
+    assert payload["generation_metadata"] == metadata.model_dump(mode="json")
     assert restored == item
 
 
@@ -668,6 +692,95 @@ def test_generation_metadata_is_a_deeply_immutable_snapshot() -> None:
         metadata.constraint_snapshot["contexts"][0] = "family"  # type: ignore[index]
     with pytest.raises(ValidationError):
         metadata.model_copy(update={"generated_at": "2026-07-22T12:00:00"})
+
+
+def test_live_candidate_attaches_immutable_generation_metadata() -> None:
+    metadata = make_generation_metadata()
+    item = make_candidate(
+        generation_mode=GenerationMode.LIVE,
+        model_id=metadata.model_id,
+        prompt_version=metadata.prompt_version,
+        generation_metadata=metadata,
+    )
+
+    assert item.generation_metadata == metadata
+    with pytest.raises(TypeError):
+        item.generation_metadata.constraint_snapshot["new"] = True  # type: ignore[index,union-attr]
+
+
+def test_curated_candidate_keeps_optional_generation_metadata_absent() -> None:
+    item = make_candidate()
+
+    assert item.generation_mode is GenerationMode.CURATED
+    assert item.generation_metadata is None
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        (
+            {
+                "generation_mode": GenerationMode.LIVE,
+                "model_id": "model-1",
+            },
+            "LIVE candidates require generation_metadata",
+        ),
+        (
+            {
+                "generation_mode": GenerationMode.LIVE,
+                "generation_metadata": make_generation_metadata(),
+            },
+            "LIVE candidates require a nonblank model_id",
+        ),
+        (
+            {
+                "generation_mode": GenerationMode.LIVE,
+                "model_id": " ",
+                "generation_metadata": make_generation_metadata(),
+            },
+            "LIVE candidates require a nonblank model_id",
+        ),
+        (
+            {
+                "generation_mode": GenerationMode.LIVE,
+                "model_id": "other-model",
+                "generation_metadata": make_generation_metadata(),
+            },
+            "generation metadata model_id must match candidate model_id",
+        ),
+        (
+            {
+                "generation_mode": GenerationMode.LIVE,
+                "model_id": "model-1",
+                "prompt_version": "other-prompt",
+                "generation_metadata": make_generation_metadata(),
+            },
+            "generation metadata prompt_version must match candidate prompt_version",
+        ),
+    ],
+    ids=[
+        "missing-metadata",
+        "missing-model-id",
+        "blank-model-id",
+        "model-id-mismatch",
+        "prompt-version-mismatch",
+    ],
+)
+def test_live_candidate_requires_consistent_generation_provenance(
+    changes: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        make_candidate(**changes)
+
+
+@pytest.mark.parametrize("field", ["model_id", "prompt_version"])
+def test_generation_metadata_requires_nonblank_identifiers(field: str) -> None:
+    values = make_generation_metadata().model_dump(mode="python")
+    values[field] = " "
+
+    with pytest.raises(ValidationError, match="must not be blank"):
+        GenerationMetadata.model_validate(values)
 
 
 @pytest.mark.parametrize(

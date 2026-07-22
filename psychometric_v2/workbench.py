@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from psychometric_v2.models import (
     CandidateItem,
     EvidenceStatus,
+    GenerationMode,
     ResearchProject,
     ResponseOption,
     ReviewAction,
@@ -90,6 +91,8 @@ class WorkbenchService:
         reviewer: str,
         action: ReviewAction | str,
         note: str,
+        *,
+        expected_version: int,
     ) -> ResearchProject:
         _require_nonblank("stem", edited_stem)
         _require_nonblank("reviewer", reviewer)
@@ -105,6 +108,13 @@ class WorkbenchService:
                 existing = project.items[item_id]
             except KeyError:
                 raise KeyError(f"item not found: {item_id}") from None
+
+            current_version = len(existing.review_versions)
+            if expected_version != current_version:
+                raise ValueError(
+                    "review version conflict: "
+                    f"expected {expected_version}, current {current_version}"
+                )
 
             if (
                 review_action is ReviewAction.PROMOTE_TO_PILOT
@@ -158,6 +168,8 @@ class WorkbenchService:
     ) -> ResearchProject:
         if not isinstance(item, CandidateItem):
             raise ValueError("item must be a validated CandidateItem")
+        if item.generation_mode is not GenerationMode.LIVE:
+            raise ValueError("generated item must use LIVE generation mode")
         with _project_lock(self.repository, project_id):
             project = self.repository.load(project_id)
             try:

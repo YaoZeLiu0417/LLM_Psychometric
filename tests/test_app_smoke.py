@@ -9,7 +9,12 @@ from streamlit.testing.v1 import AppTest
 
 from psychometric_v2 import config as v2_config
 from psychometric_v2.demo_seed import build_demo_project
-from psychometric_v2.models import GenerationMode, ReviewAction
+from psychometric_v2.models import (
+    CandidateItem,
+    GenerationMetadata,
+    GenerationMode,
+    ReviewAction,
+)
 from psychometric_v2.pipeline import GenerationStageError
 from psychometric_v2.repository import JsonProjectRepository
 from psychometric_v2.ui.pages import generation, review
@@ -44,6 +49,22 @@ PAGES = {
         "新学期社团第一次活动",
     ),
 }
+
+
+def _generation_metadata(
+    item: CandidateItem,
+    *,
+    model_id: str,
+) -> GenerationMetadata:
+    return GenerationMetadata(
+        model_id=model_id,
+        prompt_version=item.prompt_version,
+        constraint_snapshot={
+            "domain_id": item.domain_id,
+            "facet_id": item.facet_id,
+            "anchor_ids": list(item.anchor_ids),
+        },
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -120,6 +141,44 @@ def test_project_page_preserves_required_evidence_boundaries() -> None:
         ("CURATED CANDIDATES", "5"),
         ("VALIDATED ITEMS", "0"),
     }
+
+
+def test_project_curated_candidate_metric_excludes_live_items() -> None:
+    app = AppTest.from_string(
+        """
+from psychometric_v2.config import ANCHOR_ASSET
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.legacy import load_anchor_asset
+from psychometric_v2.models import GenerationMetadata, GenerationMode
+from psychometric_v2.ui.pages.project import render
+
+project = build_demo_project()
+base = project.items[project.selected_item_id]
+live = base.validated_update(
+    item_id="live-project-metric",
+    generation_mode=GenerationMode.LIVE,
+    model_id="fake-model",
+    generation_metadata=GenerationMetadata(
+        model_id="fake-model",
+        prompt_version=base.prompt_version,
+        constraint_snapshot={},
+    ),
+)
+expanded = project.validated_update(
+    items={**dict(project.items), live.item_id: live},
+    selected_item_id=live.item_id,
+)
+render(expanded, load_anchor_asset(ANCHOR_ASSET), None)
+        """
+    ).run()
+
+    assert not app.exception
+    metric = next(
+        metric
+        for metric in app.metric
+        if metric.label == "CURATED CANDIDATES"
+    )
+    assert str(metric.value) == "5"
 
 
 def test_each_page_can_be_loaded_from_preset_session_state() -> None:
@@ -239,7 +298,7 @@ def test_participant_header_stays_curated_when_selected_item_is_live() -> None:
 import streamlit as st
 
 from psychometric_v2.demo_seed import build_demo_project
-from psychometric_v2.models import GenerationMode
+from psychometric_v2.models import GenerationMetadata, GenerationMode
 from psychometric_v2.ui.components import render_header
 from psychometric_v2.ui.pages.participant import render
 from psychometric_v2.ui.state import init_state
@@ -251,6 +310,11 @@ live = curated.validated_update(
     stem_zh="LIVE STEM MUST NOT BE SHOWN",
     generation_mode=GenerationMode.LIVE,
     model_id="fake-model",
+    generation_metadata=GenerationMetadata(
+        model_id="fake-model",
+        prompt_version=curated.prompt_version,
+        constraint_snapshot={},
+    ),
 )
 project = seed.validated_update(
     items={**dict(seed.items), live.item_id: live},
@@ -296,6 +360,7 @@ def test_participant_uses_edited_project_from_isolated_workspace(
         "smoke-test-reviewer",
         ReviewAction.EDIT,
         "prove smoke tests do not read the runtime workspace",
+        expected_version=len(item.review_versions),
     )
 
     app = _run_app("PARTICIPANT VIEW")
@@ -311,7 +376,7 @@ def test_participant_reports_unavailable_when_project_has_no_curated_items() -> 
     app = AppTest.from_string(
         """
 from psychometric_v2.demo_seed import build_demo_project
-from psychometric_v2.models import GenerationMode
+from psychometric_v2.models import GenerationMetadata, GenerationMode
 from psychometric_v2.ui.pages.participant import render
 from psychometric_v2.ui.state import init_state
 
@@ -321,6 +386,11 @@ live = base.validated_update(
     item_id="live-only-item",
     generation_mode=GenerationMode.LIVE,
     model_id="fake-model",
+    generation_metadata=GenerationMetadata(
+        model_id="fake-model",
+        prompt_version=base.prompt_version,
+        constraint_snapshot={},
+    ),
 )
 project = seed.validated_update(
     items={live.item_id: live},
@@ -397,6 +467,10 @@ def test_research_download_projection_remains_a_five_item_demo() -> None:
         item_id="live-item-not-in-demo-export",
         generation_mode=GenerationMode.LIVE,
         model_id="fake-model",
+        generation_metadata=_generation_metadata(
+            base,
+            model_id="fake-model",
+        ),
     )
     expanded = project.validated_update(
         items={**dict(project.items), live.item_id: live},
@@ -747,6 +821,10 @@ def test_live_success_commits_session_only_after_persistence(monkeypatch) -> Non
         item_id="live-sociability-saved",
         generation_mode=GenerationMode.LIVE,
         model_id="fake-app-test-model",
+        generation_metadata=_generation_metadata(
+            seed,
+            model_id="fake-app-test-model",
+        ),
     )
     _install_successful_live_pipeline(monkeypatch, generated)
     observed: dict[str, object] = {}
@@ -802,6 +880,10 @@ def test_live_persistence_failure_restores_session_and_is_public(
         item_id="live-sociability-not-saved",
         generation_mode=GenerationMode.LIVE,
         model_id="fake-app-test-model",
+        generation_metadata=_generation_metadata(
+            seed,
+            model_id="fake-app-test-model",
+        ),
     )
     _install_successful_live_pipeline(monkeypatch, generated)
 
@@ -883,6 +965,7 @@ if not item.review_versions:
         "reviewer-a",
         ReviewAction.APPROVE,
         "persisted review note",
+        expected_version=len(item.review_versions),
     )
 init_state()
 st.session_state["v2_active_stage"] = "RESPONSE OPTIONS"
@@ -914,6 +997,10 @@ def test_construct_failure_does_not_reuse_previous_live_candidate(monkeypatch) -
         item_id="live-sociability-previous",
         generation_mode=GenerationMode.LIVE,
         model_id="previous-live-model",
+        generation_metadata=_generation_metadata(
+            seed,
+            model_id="previous-live-model",
+        ),
     )
 
     class ConstructFailingPipeline:
@@ -981,6 +1068,10 @@ def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch)
         item_id="live-sociability-partial",
         generation_mode=GenerationMode.LIVE,
         model_id="fake-app-test-model",
+        generation_metadata=_generation_metadata(
+            seed,
+            model_id="fake-app-test-model",
+        ),
     )
     calls: list[str] = []
 
@@ -1146,7 +1237,7 @@ def test_review_selection_updates_header_mode_in_the_same_rerun() -> None:
 import streamlit as st
 
 from psychometric_v2.demo_seed import build_demo_project
-from psychometric_v2.models import GenerationMode
+from psychometric_v2.models import GenerationMetadata, GenerationMode
 from psychometric_v2.ui.components import render_header
 from psychometric_v2.ui.pages.review import render, sync_selected_item_from_review
 from psychometric_v2.ui.state import init_state
@@ -1157,6 +1248,11 @@ live = curated.validated_update(
     item_id="live-review-selection",
     generation_mode=GenerationMode.LIVE,
     model_id="fake-live-model",
+    generation_metadata=GenerationMetadata(
+        model_id="fake-live-model",
+        prompt_version=curated.prompt_version,
+        constraint_snapshot={},
+    ),
 )
 project = seed.validated_update(
     items={curated.item_id: curated, live.item_id: live},
@@ -1195,7 +1291,7 @@ def test_review_header_uses_selected_live_item_generation_mode() -> None:
 import streamlit as st
 
 from psychometric_v2.demo_seed import build_demo_project
-from psychometric_v2.models import GenerationMode
+from psychometric_v2.models import GenerationMetadata, GenerationMode
 from psychometric_v2.ui.components import render_header
 
 project = build_demo_project()
@@ -1204,6 +1300,11 @@ live_item = base.validated_update(
     item_id="live-review-candidate",
     generation_mode=GenerationMode.LIVE,
     model_id="fake-live-model",
+    generation_metadata=GenerationMetadata(
+        model_id="fake-live-model",
+        prompt_version=base.prompt_version,
+        constraint_snapshot={},
+    ),
 )
 live_project = project.validated_update(
     items={**dict(project.items), live_item.item_id: live_item},

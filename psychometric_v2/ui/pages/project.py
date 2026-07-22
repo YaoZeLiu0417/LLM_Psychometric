@@ -5,7 +5,7 @@ import html
 import pandas as pd
 import streamlit as st
 
-from psychometric_v2.models import ConstructAnchor, ResearchProject
+from psychometric_v2.models import ConstructAnchor, GenerationMode, ResearchProject
 from psychometric_v2.workbench import WorkbenchService
 
 
@@ -50,7 +50,13 @@ def render(
         ("SOURCE ANCHORS", len(anchors)),
         ("FACETS", len({anchor.facet_id for anchor in anchors.values()})),
         ("DOMAINS", len({anchor.domain_id for anchor in anchors.values()})),
-        ("CURATED CANDIDATES", len(project.items)),
+        (
+            "CURATED CANDIDATES",
+            sum(
+                item.generation_mode is GenerationMode.CURATED
+                for item in project.items.values()
+            ),
+        ),
         ("VALIDATED ITEMS", 0),
     )
     columns = st.columns(5)

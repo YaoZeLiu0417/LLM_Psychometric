@@ -9,6 +9,7 @@ from psychometric_v2.models import (
     CheckOutcome,
     CheckSeverity,
     EvidenceStatus,
+    GenerationMetadata,
     GenerationMode,
     QualityCheck,
     ReviewAction,
@@ -22,6 +23,22 @@ def service_with_seed(tmp_path):
     project = build_demo_project()
     repository.save(project)
     return WorkbenchService(repository), repository, project
+
+
+def generation_metadata(
+    item: CandidateItem,
+    *,
+    model_id: str = "fake-model",
+) -> GenerationMetadata:
+    return GenerationMetadata(
+        model_id=model_id,
+        prompt_version=item.prompt_version,
+        constraint_snapshot={
+            "domain_id": item.domain_id,
+            "facet_id": item.facet_id,
+            "anchor_ids": list(item.anchor_ids),
+        },
+    )
 
 
 def review(
@@ -43,6 +60,7 @@ def review(
         reviewer,
         action,
         note,
+        expected_version=len(item.review_versions),
     )
 
 
@@ -147,6 +165,7 @@ def test_review_rejects_missing_project_item_and_invalid_options(tmp_path) -> No
             "reviewer",
             ReviewAction.EDIT,
             "修改",
+            expected_version=0,
         )
     with pytest.raises(ValueError, match="options"):
         review(
@@ -203,6 +222,7 @@ def test_review_rebuilds_deterministic_checks_and_preserves_model_checks(tmp_pat
             "quality_checks": (*item.quality_checks, model_check),
             "generation_mode": GenerationMode.LIVE,
             "model_id": "fake-model",
+            "generation_metadata": generation_metadata(item),
         }
     )
     project_with_model_check = project.validated_update(
@@ -233,6 +253,7 @@ def test_save_generated_item_adds_selects_validated_snapshot_and_persists(tmp_pa
             "item_id": "live-sociability-test123",
             "generation_mode": GenerationMode.LIVE,
             "model_id": "fake-model",
+            "generation_metadata": generation_metadata(source),
         }
     )
 
@@ -260,6 +281,7 @@ def test_save_generated_item_rejects_existing_id_without_losing_review_history(
             **source.model_dump(mode="python"),
             "generation_mode": GenerationMode.LIVE,
             "model_id": "fake-model",
+            "generation_metadata": generation_metadata(source),
         }
     )
 
@@ -288,7 +310,7 @@ def test_review_transaction_is_serialized_across_service_instances(tmp_path) -> 
     second_entered_load = Event()
     real_first_load = repository_one.load
     real_second_load = repository_two.load
-    failures: list[BaseException] = []
+    failures: list[tuple[str, BaseException]] = []
 
     def slow_first_load(project_id: str):
         loaded = real_first_load(project_id)
@@ -314,9 +336,10 @@ def test_review_transaction_is_serialized_across_service_instances(tmp_path) -> 
                 "thread-reviewer",
                 ReviewAction.EDIT,
                 note,
+                expected_version=0,
             )
         except BaseException as exc:
-            failures.append(exc)
+            failures.append((note, exc))
 
     first_thread = Thread(
         target=edit,
@@ -336,20 +359,30 @@ def test_review_transaction_is_serialized_across_service_instances(tmp_path) -> 
 
     assert not first_thread.is_alive()
     assert not second_thread.is_alive()
-    assert failures == []
+    assert len(failures) == 1
+    failed_note, failure = failures[0]
+    assert failed_note == "second"
+    assert isinstance(failure, ValueError)
+    assert str(failure) == "review version conflict: expected 0, current 1"
     assert not second_entered_before_release
     restored = repository_one.load(project.config.project_id)
     restored_item = restored.items[item.item_id]
-    assert [version.version for version in restored_item.review_versions] == [1, 2]
-    assert [version.note for version in restored_item.review_versions] == [
-        "first",
-        "second",
-    ]
-    assert restored_item.stem_zh == "第二个线程修改后的题干"
+    assert [version.version for version in restored_item.review_versions] == [1]
+    assert [version.note for version in restored_item.review_versions] == ["first"]
+    assert restored_item.stem_zh == "第一个线程修改后的题干"
 
 
 def test_save_generated_item_rejects_invalid_or_mismatched_input(tmp_path) -> None:
-    service, _, project = service_with_seed(tmp_path)
+    service, repository, project = service_with_seed(tmp_path)
 
     with pytest.raises(ValueError, match="CandidateItem"):
         service.save_generated_item(project.config.project_id, {"item_id": "wrong"})
+
+    curated = next(iter(project.items.values()))
+    with pytest.raises(
+        ValueError,
+        match="generated item must use LIVE generation mode",
+    ):
+        service.save_generated_item(project.config.project_id, curated)
+
+    assert repository.load(project.config.project_id) == project

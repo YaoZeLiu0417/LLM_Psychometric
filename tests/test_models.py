@@ -1,4 +1,6 @@
+import copy
 import json
+import pickle
 from collections.abc import Callable
 
 import pytest
@@ -110,6 +112,10 @@ def make_quality_check() -> QualityCheck:
         outcome=CheckOutcome.PASS,
         evidence="语言适合目标年龄。",
     )
+
+
+def pickle_round_trip(value: object) -> object:
+    return pickle.loads(pickle.dumps(value))
 
 
 def test_candidate_requires_four_unique_score_levels() -> None:
@@ -551,3 +557,142 @@ def test_project_config_supports_general_age_ranges_with_an_upper_bound() -> Non
     assert (config.age_min, config.age_max) == (18, 65)
     with pytest.raises(ValidationError):
         ProjectConfig(project_id="p", title="Invalid", age_min=18, age_max=121)
+
+
+@pytest.mark.parametrize(
+    "clone",
+    [
+        copy.deepcopy,
+        lambda project: project.model_copy(deep=True),
+        pickle_round_trip,
+    ],
+    ids=["deepcopy", "model-copy-deep", "pickle"],
+)
+def test_research_project_supports_immutable_deep_clones(
+    clone: Callable[[object], object],
+) -> None:
+    item = make_candidate()
+    project = ResearchProject(
+        config=ProjectConfig(project_id="p", title="Project"),
+        items={item.item_id: item},
+        selected_item_id=item.item_id,
+    )
+
+    cloned = clone(project)
+
+    assert cloned == project
+    assert cloned is not project
+    assert cloned.model_dump(mode="json") == project.model_dump(mode="json")
+    with pytest.raises(TypeError):
+        cloned.items["other"] = item  # type: ignore[index,union-attr]
+
+
+def test_research_project_mapping_storage_cannot_be_reassigned() -> None:
+    project = ResearchProject(
+        config=ProjectConfig(project_id="p", title="Project")
+    )
+
+    with pytest.raises((AttributeError, TypeError)):
+        project.items._items = ()  # type: ignore[attr-defined]
+
+
+def test_model_copy_update_revalidates_candidate_and_project() -> None:
+    item = make_candidate()
+    project = ResearchProject(
+        config=ProjectConfig(project_id="p", title="Project"),
+        items={item.item_id: item},
+        selected_item_id=item.item_id,
+    )
+
+    with pytest.raises(ValidationError):
+        item.model_copy(update={"domain_id": "agreeableness"})
+    with pytest.raises(ValidationError):
+        item.model_copy(update={"anchor_ids": []})
+    with pytest.raises(ValidationError):
+        project.model_copy(update={"selected_item_id": "missing"})
+
+
+def test_validated_updates_rebuild_deeply_immutable_snapshots() -> None:
+    item = make_candidate()
+    updated_item = item.validated_update(
+        stem_zh="更新后的题干",
+        anchor_ids=["bfi2-sociability-01"],
+    )
+    copied_item = item.model_copy(
+        update={
+            "stem_zh": "通过兼容 API 更新",
+            "anchor_ids": ["bfi2-sociability-01"],
+        }
+    )
+    project = ResearchProject(
+        config=ProjectConfig(project_id="p", title="Project"),
+        items={item.item_id: item},
+        selected_item_id=item.item_id,
+    )
+    updated_project = project.validated_update(
+        items={updated_item.item_id: updated_item},
+        selected_item_id=updated_item.item_id,
+    )
+
+    assert updated_item.stem_zh == "更新后的题干"
+    assert copied_item.stem_zh == "通过兼容 API 更新"
+    assert isinstance(updated_item.anchor_ids, tuple)
+    assert isinstance(copied_item.anchor_ids, tuple)
+    assert updated_project.items[updated_item.item_id] == updated_item
+    with pytest.raises(TypeError):
+        updated_project.items["other"] = item  # type: ignore[index]
+
+
+def make_generation_metadata() -> GenerationMetadata:
+    return GenerationMetadata(
+        model_id="model-1",
+        prompt_version="v2.0-demo",
+        generated_at="2026-07-22T12:00:00+09:00",
+        constraint_snapshot={
+            "population": {"locale": "zh-CN", "ages": [12, 15]},
+            "contexts": ["classroom", "peer"],
+        },
+    )
+
+
+def test_generation_metadata_is_a_deeply_immutable_snapshot() -> None:
+    metadata = make_generation_metadata()
+
+    with pytest.raises(ValidationError):
+        metadata.model_id = "changed"
+    with pytest.raises(TypeError):
+        metadata.constraint_snapshot["new"] = True  # type: ignore[index]
+    with pytest.raises(TypeError):
+        metadata.constraint_snapshot["population"]["locale"] = "en-US"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        metadata.constraint_snapshot["contexts"][0] = "family"  # type: ignore[index]
+    with pytest.raises(ValidationError):
+        metadata.model_copy(update={"generated_at": "2026-07-22T12:00:00"})
+
+
+@pytest.mark.parametrize(
+    "clone",
+    [
+        copy.deepcopy,
+        lambda metadata: metadata.model_copy(deep=True),
+        pickle_round_trip,
+    ],
+    ids=["deepcopy", "model-copy-deep", "pickle"],
+)
+def test_generation_metadata_supports_persistence_round_trips(
+    clone: Callable[[object], object],
+) -> None:
+    metadata = make_generation_metadata()
+
+    cloned = clone(metadata)
+    json_payload = metadata.model_dump(mode="json")
+    restored = GenerationMetadata.model_validate_json(metadata.model_dump_json())
+
+    assert cloned == metadata
+    assert restored == metadata
+    assert json_payload["constraint_snapshot"] == {
+        "population": {"locale": "zh-CN", "ages": [12, 15]},
+        "contexts": ["classroom", "peer"],
+    }
+    with pytest.raises(TypeError):
+        cloned.constraint_snapshot["new"] = True  # type: ignore[index,union-attr]

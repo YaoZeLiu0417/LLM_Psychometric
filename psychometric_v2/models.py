@@ -1,8 +1,8 @@
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from copy import deepcopy
 from datetime import datetime, timezone
 from enum import Enum
-from types import MappingProxyType
-from typing import Annotated, Any
+from typing import Annotated, Any, Generic, Self, TypeVar
 
 from pydantic import (
     AfterValidator,
@@ -15,6 +15,92 @@ from pydantic import (
 )
 
 from psychometric_v2.taxonomy import DOMAINS, FACETS, LEGACY_FEATURE_MAP
+
+
+_KeyT = TypeVar("_KeyT")
+_ValueT = TypeVar("_ValueT")
+
+
+class FrozenMapping(Mapping[_KeyT, _ValueT], Generic[_KeyT, _ValueT]):
+    __slots__ = ("_items",)
+
+    def __init__(
+        self,
+        values: Mapping[_KeyT, _ValueT]
+        | Iterable[tuple[_KeyT, _ValueT]] = (),
+    ) -> None:
+        self._items = tuple(dict(values).items())
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "_items":
+            try:
+                object.__getattribute__(self, name)
+            except AttributeError:
+                object.__setattr__(self, name, value)
+                return
+        raise AttributeError(f"{type(self).__name__} is immutable")
+
+    def __getitem__(self, key: _KeyT) -> _ValueT:
+        for candidate, value in self._items:
+            if candidate == key:
+                return value
+        raise KeyError(key)
+
+    def __iter__(self) -> Iterator[_KeyT]:
+        return (key for key, _ in self._items)
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({dict(self._items)!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Mapping):
+            return NotImplemented
+        return dict(self._items) == dict(other.items())
+
+    def __hash__(self) -> int:
+        return hash(frozenset(self._items))
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "FrozenMapping[_KeyT, _ValueT]":
+        copied = type(self)(deepcopy(self._items, memo))
+        memo[id(self)] = copied
+        return copied
+
+    def __reduce__(self) -> tuple[type["FrozenMapping"], tuple[tuple[object, ...]]]:
+        return type(self), (self._items,)
+
+
+class _ValidatedFrozenModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    def _validated_copy(
+        self,
+        update: Mapping[str, Any],
+        *,
+        deep: bool,
+    ) -> Self:
+        values = self.model_dump(round_trip=True)
+        changes = dict(update)
+        if deep:
+            values = deepcopy(values)
+            changes = deepcopy(changes)
+        values.update(changes)
+        return type(self).model_validate(values, extra="forbid")
+
+    def validated_update(self, **changes: Any) -> Self:
+        return self._validated_copy(changes, deep=False)
+
+    def model_copy(
+        self,
+        *,
+        update: Mapping[str, Any] | None = None,
+        deep: bool = False,
+    ) -> Self:
+        if update is None:
+            return super().model_copy(deep=deep)
+        return self._validated_copy(update, deep=deep)
 
 
 def utc_now_iso() -> str:
@@ -93,9 +179,7 @@ class ReviewAction(str, Enum):
     PROMOTE_TO_PILOT = "PROMOTE_TO_PILOT"
 
 
-class ProjectConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class ProjectConfig(_ValidatedFrozenModel):
     project_id: str
     title: str
     population: str = "Mainland Chinese junior-secondary students"
@@ -141,9 +225,7 @@ class ProjectConfig(BaseModel):
         return self
 
 
-class ConstructAnchor(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class ConstructAnchor(_ValidatedFrozenModel):
     anchor_id: str
     item_number: int
     text_zh: str
@@ -166,9 +248,7 @@ class ConstructAnchor(BaseModel):
         return self
 
 
-class ConstructSpecification(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class ConstructSpecification(_ValidatedFrozenModel):
     domain_id: str
     facet_id: str
     anchor_ids: tuple[str, ...]
@@ -188,9 +268,7 @@ class ConstructSpecification(BaseModel):
         return self
 
 
-class ScenarioBlueprint(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class ScenarioBlueprint(_ValidatedFrozenModel):
     setting: str
     actors: tuple[str, ...]
     relationship: str
@@ -200,9 +278,7 @@ class ScenarioBlueprint(BaseModel):
     context_domain: str
 
 
-class ResponseOption(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class ResponseOption(_ValidatedFrozenModel):
     option_id: str
     text_zh: str
     trait_level: int = Field(ge=1, le=4)
@@ -246,9 +322,7 @@ def _validate_option_set(
     return options
 
 
-class QualityCheck(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class QualityCheck(_ValidatedFrozenModel):
     check_id: str
     label: str
     severity: CheckSeverity
@@ -257,9 +331,7 @@ class QualityCheck(BaseModel):
     recommendation: str = ""
 
 
-class ReviewVersion(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class ReviewVersion(_ValidatedFrozenModel):
     version: int
     created_at: _AwareIsoString = Field(default_factory=utc_now_iso)
     reviewer: str
@@ -278,9 +350,7 @@ class ReviewVersion(BaseModel):
         return _validate_option_set(options)
 
 
-class CandidateItem(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class CandidateItem(_ValidatedFrozenModel):
     item_id: str
     domain_id: str
     facet_id: str
@@ -324,12 +394,10 @@ class CandidateItem(BaseModel):
         return self
 
 
-class ResearchProject(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class ResearchProject(_ValidatedFrozenModel):
     config: ProjectConfig
     items: Mapping[str, CandidateItem] = Field(
-        default_factory=lambda: MappingProxyType({})
+        default_factory=FrozenMapping
     )
     selected_item_id: str | None = None
     updated_at: _AwareIsoString = Field(default_factory=utc_now_iso)
@@ -339,7 +407,7 @@ class ResearchProject(BaseModel):
     def freeze_items(
         cls, items: Mapping[str, CandidateItem]
     ) -> Mapping[str, CandidateItem]:
-        return MappingProxyType(dict(items))
+        return FrozenMapping(items)
 
     @field_serializer("items")
     def serialize_items(
@@ -356,8 +424,39 @@ class ResearchProject(BaseModel):
         return self
 
 
-class GenerationMetadata(BaseModel):
+def _freeze_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return FrozenMapping(
+            (key, _freeze_json_value(nested)) for key, nested in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_json_value(nested) for nested in value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise ValueError("constraint snapshot values must be JSON-compatible")
+
+
+def _thaw_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_json_value(nested) for key, nested in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json_value(nested) for nested in value]
+    return value
+
+
+class GenerationMetadata(_ValidatedFrozenModel):
     model_id: str
     prompt_version: str
     generated_at: _AwareIsoString = Field(default_factory=utc_now_iso)
-    constraint_snapshot: dict[str, Any]
+    constraint_snapshot: Mapping[str, Any]
+
+    @field_validator("constraint_snapshot")
+    @classmethod
+    def freeze_constraint_snapshot(
+        cls, snapshot: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        return _freeze_json_value(snapshot)
+
+    @field_serializer("constraint_snapshot")
+    def serialize_constraint_snapshot(self, snapshot: Mapping[str, Any]) -> Any:
+        return _thaw_json_value(snapshot)

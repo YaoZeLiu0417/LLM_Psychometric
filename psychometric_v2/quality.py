@@ -40,7 +40,8 @@ def run_deterministic_checks(item: CandidateItem) -> tuple[QualityCheck, ...]:
     normalized_ids = [option.option_id.strip() for option in options]
     normalized_texts = [option.text_zh.strip() for option in options]
     unique_options_ok = (
-        all(normalized_ids)
+        bool(options)
+        and all(normalized_ids)
         and all(normalized_texts)
         and len(set(normalized_ids)) == len(normalized_ids)
         and len(set(normalized_texts)) == len(normalized_texts)

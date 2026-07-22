@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -10,36 +11,33 @@ from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.models import ResearchProject
 
 
+_PROJECT_ID_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
 class JsonProjectRepository:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
     def path_for(self, project_id: str) -> Path:
-        candidate = Path(project_id)
-        if (
-            not project_id
-            or project_id in {".", ".."}
-            or candidate.is_absolute()
-            or len(candidate.parts) != 1
-            or candidate.name != project_id
-        ):
-            raise ValueError("project_id must be a single relative path component")
+        if _PROJECT_ID_PATTERN.fullmatch(project_id) is None:
+            raise ValueError(
+                "project_id must be a canonical lowercase identifier "
+                "containing only alphanumeric segments separated by single hyphens"
+            )
 
         destination = (self.root / f"{project_id}.json").resolve()
         if destination.parent != self.root:
             raise ValueError("project_id resolves outside the repository root")
         return destination
 
-    def save(self, project: ResearchProject) -> Path:
-        destination = self.path_for(project.config.project_id)
-        serialized = project.model_dump_json(indent=2)
+    def _write_temporary(self, destination: Path, serialized: str) -> Path:
         temporary_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 encoding="utf-8",
-                dir=self.root,
+                dir=destination.parent,
                 prefix=f".{destination.name}.",
                 suffix=".tmp",
                 delete=False,
@@ -48,10 +46,22 @@ class JsonProjectRepository:
                 temporary.write(serialized)
                 temporary.flush()
                 os.fsync(temporary.fileno())
-            os.replace(temporary_path, destination)
-        finally:
+        except BaseException:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
+            raise
+        assert temporary_path is not None
+        return temporary_path
+
+    def save(self, project: ResearchProject) -> Path:
+        destination = self.path_for(project.config.project_id)
+        temporary_path = self._write_temporary(
+            destination, project.model_dump_json(indent=2)
+        )
+        try:
+            os.replace(temporary_path, destination)
+        finally:
+            temporary_path.unlink(missing_ok=True)
         return destination
 
     def load(self, project_id: str) -> ResearchProject:
@@ -70,7 +80,14 @@ class JsonProjectRepository:
     ) -> ResearchProject:
         seed = build_demo_project() if project is None else project
         destination = self.path_for(seed.config.project_id)
-        if destination.exists():
-            return self.load(seed.config.project_id)
-        self.save(seed)
-        return seed
+        temporary_path = self._write_temporary(
+            destination, seed.model_dump_json(indent=2)
+        )
+        try:
+            try:
+                os.link(temporary_path, destination)
+            except FileExistsError:
+                return self.load(seed.config.project_id)
+            return seed
+        finally:
+            temporary_path.unlink(missing_ok=True)

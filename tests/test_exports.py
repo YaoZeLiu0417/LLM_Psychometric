@@ -79,3 +79,64 @@ def test_csv_export_has_bom_exact_columns_and_ordered_option_rows() -> None:
     for item in project.items.values():
         item_rows = [row for row in rows if row["item_id"] == item.item_id]
         assert {int(row["score"]) for row in item_rows} == {1, 2, 3, 4}
+
+
+def test_csv_export_escapes_formula_prefixes_without_changing_json() -> None:
+    project = build_demo_project()
+    item = next(iter(project.items.values()))
+    assert item.construct_spec is not None
+    dangerous_anchor = "@anchor"
+    dangerous_options = tuple(
+        option.validated_update(option_id=option_id, text_zh=text_zh)
+        for option, option_id, text_zh in zip(
+            item.options,
+            ("+option", "-option", "@option", "=option"),
+            ("\tformula-tab", "\rformula-cr", "\nformula-lf", "safe text"),
+            strict=True,
+        )
+    )
+    dangerous_item = item.validated_update(
+        item_id="=item",
+        anchor_ids=(dangerous_anchor,),
+        stem_zh="\tstem",
+        construct_spec=item.construct_spec.validated_update(
+            anchor_ids=(dangerous_anchor,)
+        ),
+        options=dangerous_options,
+    )
+    dangerous_project = project.validated_update(
+        items={dangerous_item.item_id: dangerous_item},
+        selected_item_id=dangerous_item.item_id,
+    )
+
+    csv_rows = list(
+        csv.DictReader(
+            io.StringIO(
+                project_csv_bytes(dangerous_project).decode("utf-8-sig"),
+                newline="",
+            )
+        )
+    )
+    json_payload = json.loads(project_json_bytes(dangerous_project))
+
+    assert len(csv_rows) == 4
+    assert all(row["item_id"] == "'=item" for row in csv_rows)
+    assert all(row["anchor_ids"] == "'@anchor" for row in csv_rows)
+    assert all(row["stem_zh"] == "'\tstem" for row in csv_rows)
+    assert [row["option_id"] for row in csv_rows] == [
+        "'+option",
+        "'-option",
+        "'@option",
+        "'=option",
+    ]
+    assert [row["option_text_zh"] for row in csv_rows] == [
+        "'\tformula-tab",
+        "'\rformula-cr",
+        "'\nformula-lf",
+        "safe text",
+    ]
+    assert all(row["domain_id"] == item.domain_id for row in csv_rows)
+    assert all(not row["score"].startswith("'") for row in csv_rows)
+    assert json_payload["selected_item_id"] == "=item"
+    assert json_payload["items"]["=item"]["stem_zh"] == "\tstem"
+    assert json_payload["items"]["=item"]["options"][0]["option_id"] == "+option"

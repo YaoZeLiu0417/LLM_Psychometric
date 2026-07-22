@@ -1,10 +1,16 @@
 import os
 from pathlib import Path
+from threading import Event, Thread, current_thread
 
 import pytest
 
 from psychometric_v2.demo_seed import build_demo_project
-from psychometric_v2.models import EvidenceStatus, ReviewAction, ReviewVersion
+from psychometric_v2.models import (
+    EvidenceStatus,
+    ResearchProject,
+    ReviewAction,
+    ReviewVersion,
+)
 from psychometric_v2.repository import JsonProjectRepository
 from psychometric_v2.taxonomy import FACETS
 
@@ -118,6 +124,29 @@ EXPECTED_ITEMS = (
 )
 
 
+def make_reviewed_project() -> ResearchProject:
+    seed = build_demo_project()
+    first_item = next(iter(seed.items.values()))
+    reviewed_item = first_item.validated_update(
+        evidence_status=EvidenceStatus.HUMAN_REVIEWED,
+        review_versions=(
+            ReviewVersion(
+                version=1,
+                reviewer="reviewer-1",
+                action=ReviewAction.EDIT,
+                note="保留人工审核内容",
+                before_stem_zh=first_item.stem_zh,
+                before_options=first_item.options,
+                after_stem_zh="人工审核后的题干",
+                after_options=first_item.options,
+            ),
+        ),
+    )
+    return seed.validated_update(
+        items={**dict(seed.items), reviewed_item.item_id: reviewed_item}
+    )
+
+
 def test_demo_seed_has_exact_curated_content_and_provenance() -> None:
     project = build_demo_project()
 
@@ -197,34 +226,83 @@ def test_repository_round_trip_is_lossless(tmp_path: Path) -> None:
     assert not list(destination.parent.glob(f".{destination.name}.*.tmp"))
 
 
+def test_save_intentionally_replaces_an_existing_project(tmp_path: Path) -> None:
+    repository = JsonProjectRepository(tmp_path)
+    original = build_demo_project()
+    replacement = original.validated_update(
+        updated_at="2026-07-22T12:00:00+09:00"
+    )
+
+    repository.save(original)
+    repository.save(replacement)
+
+    assert repository.load(original.config.project_id) == replacement
+    assert (
+        repository.path_for(original.config.project_id).read_text(encoding="utf-8")
+        == replacement.model_dump_json(indent=2)
+    )
+
+
 def test_ensure_seed_does_not_overwrite_reviewed_content(tmp_path: Path) -> None:
     repository = JsonProjectRepository(tmp_path)
-    seed = build_demo_project()
-    first_item = next(iter(seed.items.values()))
-    reviewed_item = first_item.validated_update(
-        evidence_status=EvidenceStatus.HUMAN_REVIEWED,
-        review_versions=(
-            ReviewVersion(
-                version=1,
-                reviewer="reviewer-1",
-                action=ReviewAction.EDIT,
-                note="保留人工审核内容",
-                before_stem_zh=first_item.stem_zh,
-                before_options=first_item.options,
-                after_stem_zh="人工审核后的题干",
-                after_options=first_item.options,
-            ),
-        ),
-    )
-    reviewed = seed.validated_update(
-        items={**dict(seed.items), reviewed_item.item_id: reviewed_item}
-    )
+    reviewed = make_reviewed_project()
     repository.save(reviewed)
 
     ensured = repository.ensure_seed()
 
     assert ensured == reviewed
-    assert ensured.items[reviewed_item.item_id].review_versions[0].note == "保留人工审核内容"
+    assert next(iter(ensured.items.values())).review_versions[0].note == "保留人工审核内容"
+
+
+def test_concurrent_ensure_seed_loser_loads_reviewed_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = JsonProjectRepository(tmp_path)
+    reviewed = make_reviewed_project()
+    unreviewed = build_demo_project()
+    reviewed_published = Event()
+    real_link = os.link
+    returned: dict[str, ResearchProject] = {}
+    failures: list[BaseException] = []
+
+    def ordered_link(source: os.PathLike[str], destination: os.PathLike[str]) -> None:
+        if current_thread().name == "reviewed-publisher":
+            real_link(source, destination)
+            reviewed_published.set()
+            return
+        if not reviewed_published.wait(timeout=5):
+            raise TimeoutError("reviewed publisher did not reach atomic publication")
+        real_link(source, destination)
+
+    def ensure(name: str, project: ResearchProject) -> None:
+        try:
+            returned[name] = repository.ensure_seed(project)
+        except BaseException as exc:
+            failures.append(exc)
+
+    monkeypatch.setattr("psychometric_v2.repository.os.link", ordered_link)
+    seed_thread = Thread(
+        target=ensure,
+        args=("seed", unreviewed),
+        name="seed-publisher",
+    )
+    reviewed_thread = Thread(
+        target=ensure,
+        args=("reviewed", reviewed),
+        name="reviewed-publisher",
+    )
+
+    seed_thread.start()
+    reviewed_thread.start()
+    seed_thread.join(timeout=10)
+    reviewed_thread.join(timeout=10)
+
+    assert not seed_thread.is_alive()
+    assert not reviewed_thread.is_alive()
+    assert failures == []
+    assert returned == {"seed": reviewed, "reviewed": reviewed}
+    assert repository.load(reviewed.config.project_id) == reviewed
+    assert not list(tmp_path.glob(".*.tmp"))
 
 
 @pytest.mark.parametrize(
@@ -243,6 +321,45 @@ def test_path_for_rejects_absolute_paths(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="project_id"):
         repository.path_for(str((tmp_path / "absolute").resolve()))
+
+
+@pytest.mark.parametrize(
+    "project_id",
+    [
+        "Demo-project",
+        "demo-Project",
+        "DEMO",
+        "demo_project",
+        "demo--project",
+        "-demo",
+        "demo-",
+        "demo.project",
+    ],
+)
+def test_repository_rejects_noncanonical_project_ids(
+    tmp_path: Path, project_id: str
+) -> None:
+    repository = JsonProjectRepository(tmp_path)
+
+    with pytest.raises(ValueError, match="canonical lowercase"):
+        repository.path_for(project_id)
+
+
+def test_save_and_load_reject_case_colliding_project_ids(tmp_path: Path) -> None:
+    repository = JsonProjectRepository(tmp_path)
+    project = build_demo_project()
+    uppercase_id = "Adolescent-Big-Five-Demo"
+    uppercase_project = project.validated_update(
+        config=project.config.validated_update(project_id=uppercase_id)
+    )
+
+    repository.save(project)
+
+    with pytest.raises(ValueError, match="canonical lowercase"):
+        repository.save(uppercase_project)
+    with pytest.raises(ValueError, match="canonical lowercase"):
+        repository.load(uppercase_id)
+    assert repository.load(project.config.project_id) == project
 
 
 def test_load_reports_missing_and_invalid_projects(tmp_path: Path) -> None:
@@ -274,3 +391,21 @@ def test_failed_atomic_replace_preserves_existing_file_and_cleans_temp(
 
     assert destination.read_bytes() == original_bytes
     assert not list(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_temporary_write_failure_cleans_its_partial_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = JsonProjectRepository(tmp_path)
+    project = build_demo_project()
+
+    def fail_fsync(file_descriptor: int) -> None:
+        raise OSError("fsync failed")
+
+    monkeypatch.setattr("psychometric_v2.repository.os.fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="fsync failed"):
+        repository.save(project)
+
+    assert not repository.path_for(project.config.project_id).exists()
+    assert not list(tmp_path.glob(".*.tmp"))

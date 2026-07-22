@@ -97,6 +97,18 @@ def test_structural_failures_are_error_flags(
     assert check.recommendation.strip()
 
 
+def test_duplicate_options_flags_empty_option_set_as_not_assessable() -> None:
+    item = next(iter(build_demo_project().items.values()))
+    invalid = construct_invalid_candidate(item, options=())
+
+    check = check_map(invalid)["DUPLICATE_OPTIONS"]
+
+    assert check.severity.value == "ERROR"
+    assert check.outcome.value == "FLAG"
+    assert check.evidence.strip()
+    assert check.recommendation.strip()
+
+
 @pytest.mark.parametrize(
     "updates",
     [

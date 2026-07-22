@@ -1,1 +1,15 @@
 .worktrees/
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+workspace_data/
+exports/
+*.log
+/250705-问卷研究/
+/250705-问卷研究.zip

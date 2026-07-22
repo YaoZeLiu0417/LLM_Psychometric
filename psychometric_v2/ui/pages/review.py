@@ -5,12 +5,14 @@ import html
 import pandas as pd
 import streamlit as st
 
+from psychometric_v2.exports import project_csv_bytes, project_json_bytes
 from psychometric_v2.models import (
     CandidateItem,
     CheckOutcome,
     CheckSeverity,
     ConstructAnchor,
     EvidenceStatus,
+    GenerationMode,
     ResearchProject,
     ResponseOption,
     ReviewAction,
@@ -22,6 +24,25 @@ from psychometric_v2.workbench import WorkbenchService
 
 def _e(value: object) -> str:
     return html.escape(str(value), quote=True)
+
+
+def demo_export_project(project: ResearchProject) -> ResearchProject:
+    curated_items = dict(
+        tuple(
+            (item_id, item)
+            for item_id, item in project.items.items()
+            if item.generation_mode is GenerationMode.CURATED
+        )[:5]
+    )
+    selected_item_id = (
+        project.selected_item_id
+        if project.selected_item_id in curated_items
+        else next(iter(curated_items), None)
+    )
+    return project.validated_update(
+        items=curated_items,
+        selected_item_id=selected_item_id,
+    )
 
 
 def sync_selected_item_from_review(project: ResearchProject) -> None:
@@ -267,3 +288,30 @@ def render(
     with trace:
         render_provenance(item=item, anchors=anchors)
         _render_check_trace(item)
+
+    export_project = demo_export_project(project)
+    st.markdown(
+        '<div class="section-heading">RESEARCH EXPORTS</div>',
+        unsafe_allow_html=True,
+    )
+    json_download, csv_download = st.columns(2, gap="small")
+    with json_download:
+        st.download_button(
+            "DOWNLOAD JSON",
+            data=project_json_bytes(export_project),
+            file_name="adolescent_big_five_demo.json",
+            mime="application/json",
+            icon=":material/download:",
+            on_click="ignore",
+            use_container_width=True,
+        )
+    with csv_download:
+        st.download_button(
+            "DOWNLOAD CSV",
+            data=project_csv_bytes(export_project),
+            file_name="adolescent_big_five_items.csv",
+            mime="text/csv",
+            icon=":material/download:",
+            on_click="ignore",
+            use_container_width=True,
+        )

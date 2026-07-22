@@ -1,3 +1,6 @@
+import csv
+import io
+import json
 from pathlib import Path
 
 import pytest
@@ -6,7 +9,7 @@ from streamlit.testing.v1 import AppTest
 from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.models import GenerationMode
 from psychometric_v2.pipeline import GenerationStageError
-from psychometric_v2.ui.pages import generation
+from psychometric_v2.ui.pages import generation, review
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,6 +155,190 @@ def test_review_queue_and_participant_view_keep_roles_separate() -> None:
     participant_text = _markdown(participant).lower()
     for hidden_term in ("score", "trait", "anchor", "provenance", "profile"):
         assert hidden_term not in participant_text
+
+
+def test_participant_preview_collects_only_option_ids_across_five_items() -> None:
+    project = build_demo_project()
+    items = tuple(project.items.values())
+    app = _run_app("PARTICIPANT VIEW")
+
+    for index, item in enumerate(items):
+        assert not app.exception
+        assert f"{index + 1} / {len(items)}" in _markdown(app)
+        assert item.instruction_zh in _markdown(app)
+        assert item.stem_zh in _markdown(app)
+        assert len(app.radio) == 1
+        ordered_options = tuple(
+            sorted(item.options, key=lambda option: option.display_order)
+        )
+        assert tuple(app.radio[0].options) == tuple(
+            option.text_zh for option in ordered_options
+        )
+
+        selected = ordered_options[index % len(ordered_options)]
+        app.radio[0].set_value(selected.option_id).run()
+        responses = dict(app.session_state["v2_participant_responses"])
+        assert responses[item.item_id] == selected.option_id
+        assert all(isinstance(option_id, str) for option_id in responses.values())
+        assert all(
+            option_id in {
+                option.option_id
+                for candidate in items
+                for option in candidate.options
+            }
+            for option_id in responses.values()
+        )
+
+        next_button = _button(app, "→")
+        assert next_button.help == "Next item"
+        next_button.click().run()
+
+    assert not app.exception
+    assert "Preview complete" in _markdown(app)
+    assert "Responses remain in this session only" in _markdown(app)
+    assert len(app.radio) == 0
+    assert len(app.get("download_button")) == 0
+
+    back_button = _button(app, "←")
+    assert back_button.help == "Previous item"
+    back_button.click().run()
+    assert f"{len(items)} / {len(items)}" in _markdown(app)
+
+
+def test_participant_preview_never_renders_research_metadata() -> None:
+    app = _run_app("PARTICIPANT VIEW")
+    rendered = _markdown(app)
+    rendered += "\n" + "\n".join(
+        str(option) for radio in app.radio for option in radio.options
+    )
+
+    for hidden_term in (
+        "anchor_ids",
+        "trait_level",
+        "score",
+        "Extraversion",
+        "VALIDATED",
+    ):
+        assert hidden_term not in rendered
+
+
+def test_research_downloads_are_review_only_and_exclude_preview_responses(
+    monkeypatch,
+) -> None:
+    captured: dict[str, tuple[bytes, str]] = {}
+
+    def capture_download(
+        label,
+        data,
+        *,
+        file_name,
+        mime,
+        **_kwargs,
+    ):
+        captured[file_name] = (bytes(data), mime)
+        return False
+
+    monkeypatch.setattr(review.st, "download_button", capture_download)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "REVIEW"
+    app.session_state["v2_participant_responses"] = {
+        "demo-extraversion-sociability": "__session_only_response__"
+    }
+    app.run()
+
+    assert not app.exception
+    assert set(captured) == {
+        "adolescent_big_five_demo.json",
+        "adolescent_big_five_items.csv",
+    }
+    json_bytes, json_mime = captured["adolescent_big_five_demo.json"]
+    csv_bytes, csv_mime = captured["adolescent_big_five_items.csv"]
+    assert json_mime == "application/json"
+    assert csv_mime == "text/csv"
+
+    payload = json.loads(json_bytes.decode("utf-8"))
+    first_item = next(iter(payload["items"].values()))
+    assert first_item["anchor_ids"]
+    assert first_item["construct_spec"]["anchor_ids"] == first_item["anchor_ids"]
+    assert first_item["scenario_blueprint"]
+    assert first_item["quality_checks"]
+    assert "participant" not in json_bytes.decode("utf-8").lower()
+    assert "__session_only_response__" not in json_bytes.decode("utf-8")
+
+    csv_rows = list(
+        csv.DictReader(io.StringIO(csv_bytes.decode("utf-8-sig"), newline=""))
+    )
+    assert len(csv_rows) == 20
+    assert "participant" not in csv_bytes.decode("utf-8-sig").lower()
+
+    participant = _run_app("PARTICIPANT VIEW")
+    assert len(participant.get("download_button")) == 0
+
+
+def test_research_download_projection_remains_a_five_item_demo() -> None:
+    project = build_demo_project()
+    base = project.items[project.selected_item_id]
+    live = base.validated_update(
+        item_id="live-item-not-in-demo-export",
+        generation_mode=GenerationMode.LIVE,
+        model_id="fake-model",
+    )
+    expanded = project.validated_update(
+        items={**dict(project.items), live.item_id: live},
+        selected_item_id=live.item_id,
+    )
+
+    exported = review.demo_export_project(expanded)
+
+    assert len(exported.items) == 5
+    assert live.item_id not in exported.items
+    assert exported.selected_item_id in exported.items
+    csv_rows = list(
+        csv.DictReader(
+            io.StringIO(
+                review.project_csv_bytes(exported).decode("utf-8-sig"),
+                newline="",
+            )
+        )
+    )
+    assert len(csv_rows) == 20
+
+
+def test_v2_launcher_and_readme_document_the_stable_demo_contract() -> None:
+    launcher = ROOT / "run_v2.ps1"
+    readme = ROOT / "README_V2.md"
+
+    assert launcher.read_text(encoding="utf-8").splitlines() == [
+        '$ErrorActionPreference = "Stop"',
+        "$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path",
+        "Set-Location -LiteralPath $repoRoot",
+        "python -m streamlit run app_v2.py --server.port 8501 --server.headless true",
+    ]
+
+    documentation = readme.read_text(encoding="utf-8")
+    for expected in (
+        "python -m pip install -r requirements-v2.txt",
+        "powershell -ExecutionPolicy Bypass -File .\\run_v2.ps1",
+        "python -m pytest",
+        "OPENAI_API_KEY",
+        "LLM_MODEL",
+        "OPENAI_BASE_URL",
+        "CURATED DEMO",
+        "2023 research lineage",
+        "12-15",
+        "scenario blueprint",
+        "behavioral options",
+        "provenance",
+        "quality flags",
+        "human edit",
+        "participant preview",
+        "construct-module roadmap",
+        "research/demo workbench",
+        "psychometric validation",
+        "diagnosis",
+        "individual personality inference",
+    ):
+        assert expected in documentation
 
 
 def test_status_palette_and_responsive_breakpoints_are_exposed() -> None:

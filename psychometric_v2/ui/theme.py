@@ -78,12 +78,6 @@ def apply_theme() -> None:
             padding: 18px 22px;
             margin: 0 0 10px;
         }}
-        .top-row {{
-            display: flex;
-            align-items: end;
-            justify-content: space-between;
-            gap: 20px;
-        }}
         .top-eyebrow {{
             color: #BFC0C3;
             font-size: 12px;
@@ -102,25 +96,28 @@ def apply_theme() -> None:
             font-size: 15px;
             margin-top: 5px;
         }}
-        .top-badges {{
+        .top-meta {{
+            border-top: 1px solid #4A4A4D;
+            color: #D8D8DA;
             display: flex;
             flex-wrap: wrap;
-            justify-content: flex-end;
-            gap: 6px;
+            font-size: 13px;
+            gap: 4px 18px;
+            line-height: 1.4;
+            margin-top: 14px;
+            padding-top: 10px;
         }}
-        .mode-badge, .availability-badge, .status-badge {{
+        .top-meta span {{
+            font-size: 13px;
+            font-weight: 650;
+        }}
+        .status-badge {{
             display: inline-block;
             border-radius: 3px;
             font-size: 12px;
             font-weight: 750;
             line-height: 1.2;
             padding: 5px 8px;
-        }}
-        .mode-badge {{ background: var(--magenta); color: white; }}
-        .availability-badge {{
-            background: transparent;
-            border: 1px solid #6E6E72;
-            color: #E7E7E8;
         }}
         .status-model-draft {{ background: #24A8D8; color: #0B0B0D; }}
         .status-needs-revision {{ background: #F28C28; color: #0B0B0D; }}
@@ -175,30 +172,6 @@ def apply_theme() -> None:
             line-height: 1.08;
             margin: 4px 0 18px;
         }}
-        .project-band {{
-            background: var(--ink);
-            color: white;
-            border-left: 6px solid var(--magenta);
-            padding: 18px 20px;
-            margin-bottom: 18px;
-        }}
-        .project-band h2 {{
-            color: white;
-            font-size: 30px !important;
-            margin: 0 0 6px;
-        }}
-        .project-meta {{
-            color: #D5D5D7;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px 18px;
-            margin-bottom: 10px;
-        }}
-        .project-boundary {{
-            color: white;
-            font-size: 16px;
-            font-weight: 650;
-        }}
         .lineage-band {{
             border-top: 1px solid var(--ink);
             border-bottom: 1px solid var(--ink);
@@ -222,6 +195,11 @@ def apply_theme() -> None:
             color: var(--text);
             margin-top: 12px;
             padding: 8px 12px;
+        }}
+        .project-evidence-footnote {{
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 10px;
         }}
         .unit-statement {{
             background: var(--ink);
@@ -334,9 +312,7 @@ def apply_theme() -> None:
         @media (max-width: 600px) {{
             [data-testid="stMainBlockContainer"] {{ padding: 0 .9rem 2rem; }}
             .top-shell {{ padding: 14px; }}
-            .top-row {{ align-items: flex-start; flex-direction: column; }}
             .top-title {{ font-size: 28px; }}
-            .top-badges {{ justify-content: flex-start; }}
             .workspace-heading {{ font-size: 28px; }}
             .detail-grid {{ grid-template-columns: 1fr; }}
             .trace-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}

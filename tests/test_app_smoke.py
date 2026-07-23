@@ -9,6 +9,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from psychometric_v2 import config as v2_config
+from psychometric_v2 import live_access
 from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.models import (
     CandidateItem,
@@ -27,11 +28,9 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / "app_v2.py"
 PAGES = {
     "PROJECT": (
-        "Candidate item development — empirical validation required",
-        "2023 EMPIRICAL STUDY -> 2026 RECONSTRUCTION -> ADOLESCENT BEHAVIORAL PHENOTYPES",
-        "ARCHIVED 2023 EVIDENCE",
-        "Openness item-total r: .455-.664",
-        "Archived slide summary; raw participant data unavailable; not evidence for V2.",
+        "2023 COLLEGE STUDENT STUDY -> 2026 ADOLESCENT RECONSTRUCTION -> FUTURE VALIDATION",
+        "2023 STUDY / COLLEGE STUDENT SAMPLE",
+        "Historical summary from the 2023 college-student study; raw response data are no longer available.",
     ),
     "CONSTRUCT MAP": (
         "CONSTRUCT TAXONOMY",
@@ -87,12 +86,72 @@ def _markdown(app: AppTest) -> str:
     return "\n".join(element.value for element in app.markdown)
 
 
+def _header_markup(app: AppTest) -> str:
+    return next(
+        element.value
+        for element in app.markdown
+        if '<header class="top-shell">' in element.value
+    )
+
+
 def _button(app: AppTest, label: str):
     return next(button for button in app.button if button.label == label)
 
 
 def _widget_with_key(widgets, key: str):
     return next(widget for widget in widgets if widget.key == key)
+
+
+def _authorize_live_session(app: AppTest) -> None:
+    fingerprint = live_access.live_access_fingerprint()
+    assert fingerprint is not None
+    app.session_state["v2_live_unlocked"] = True
+    app.session_state["v2_live_access_fingerprint"] = fingerprint
+
+
+def _force_generate_event(monkeypatch) -> None:
+    real_button = generation.st.button
+
+    def forced_generate(label, *args, **kwargs):
+        if label == "GENERATE":
+            return True
+        return real_button(label, *args, **kwargs)
+
+    monkeypatch.setattr(generation.st, "button", forced_generate)
+
+
+def _seed_generation_display_state(
+    app: AppTest,
+    seed: CandidateItem,
+) -> dict[str, str]:
+    statuses = {
+        "CONSTRUCT SPECIFICATION": "CURATED",
+        "SCENARIO BLUEPRINT": "CURATED",
+        "RESPONSE OPTIONS": "CURATED",
+        "QUALITY CHECKS": "CURATED",
+    }
+    app.session_state["v2_generation_mode"] = GenerationMode.CURATED.value
+    app.session_state["v2_candidate_item"] = seed
+    app.session_state["v2_selected_item"] = seed.item_id
+    app.session_state["v2_construct_spec"] = seed.construct_spec
+    app.session_state["v2_scenario_blueprint"] = seed.scenario_blueprint
+    app.session_state["v2_generation_options"] = seed
+    app.session_state["v2_stage_status"] = statuses
+    return statuses
+
+
+def _assert_generation_display_state_unchanged(
+    app: AppTest,
+    seed: CandidateItem,
+    statuses: dict[str, str],
+) -> None:
+    assert app.session_state["v2_generation_mode"] == GenerationMode.CURATED.value
+    assert app.session_state["v2_candidate_item"] == seed
+    assert app.session_state["v2_selected_item"] == seed.item_id
+    assert app.session_state["v2_construct_spec"] == seed.construct_spec
+    assert app.session_state["v2_scenario_blueprint"] == seed.scenario_blueprint
+    assert app.session_state["v2_generation_options"] == seed
+    assert app.session_state["v2_stage_status"] == statuses
 
 
 def _install_successful_live_pipeline(monkeypatch, candidate) -> None:
@@ -122,7 +181,8 @@ def test_app_starts_without_live_model_configuration(monkeypatch) -> None:
     assert not app.exception
     markdown = _markdown(app)
     assert "Adolescent Big Five" in markdown
-    assert "CURATED DEMO" in markdown
+    for hidden_badge in ("CURATED DEMO", "LIVE AVAILABLE", "LIVE UNAVAILABLE"):
+        assert hidden_badge not in markdown
 
 
 def test_project_page_preserves_required_evidence_boundaries() -> None:
@@ -132,7 +192,29 @@ def test_project_page_preserves_required_evidence_boundaries() -> None:
     markdown = _markdown(app)
     for expected in PAGES["PROJECT"]:
         assert expected in markdown
-    assert "VALIDATED" not in markdown
+    header = _header_markup(app)
+    assert markdown.count('<header class="top-shell">') == 1
+    assert markdown.count(build_demo_project().config.title) == 1
+    assert "project-band" not in markdown
+    for expected in (
+        "AGE 12-15",
+        "LOCALE zh-CN",
+        "Mainland Chinese junior-secondary students",
+    ):
+        assert expected in header
+    for hidden_copy in (
+        "ACTIVE RESEARCH PROJECT",
+        "Candidate item development - empirical validation required",
+        "Candidate item development — empirical validation required",
+        "CURATED DEMO",
+        "2023 EMPIRICAL STUDY -> 2026 RECONSTRUCTION -> "
+        "ADOLESCENT BEHAVIORAL PHENOTYPES",
+        "ARCHIVED 2023 EVIDENCE",
+        "Openness item-total r",
+        "Archived slide summary; raw participant data unavailable",
+        "not evidence for V2",
+    ):
+        assert hidden_copy not in markdown
     assert "sample size" not in markdown.lower()
 
     metrics = {(metric.label, str(metric.value)) for metric in app.metric}
@@ -140,7 +222,7 @@ def test_project_page_preserves_required_evidence_boundaries() -> None:
         ("SOURCE ANCHORS", "60"),
         ("FACETS", "15"),
         ("DOMAINS", "5"),
-        ("CURATED CANDIDATES", "5"),
+        ("REFERENCE ITEMS", "5"),
         ("VALIDATED ITEMS", "0"),
     }
 
@@ -178,7 +260,7 @@ render(expanded, load_anchor_asset(ANCHOR_ASSET), None)
     metric = next(
         metric
         for metric in app.metric
-        if metric.label == "CURATED CANDIDATES"
+        if metric.label == "REFERENCE ITEMS"
     )
     assert str(metric.value) == "5"
 
@@ -192,6 +274,77 @@ def test_each_page_can_be_loaded_from_preset_session_state() -> None:
         assert app.session_state["v2_active_page"] == page
         for expected in expected_content:
             assert expected in markdown, (page, expected)
+
+
+@pytest.mark.parametrize(
+    "page",
+    ("CONSTRUCT MAP", "GENERATION STUDIO", "REVIEW", "PARTICIPANT VIEW"),
+)
+def test_non_project_headers_omit_project_metadata(page: str) -> None:
+    app = _run_app(page)
+
+    assert not app.exception
+    header = _header_markup(app)
+    assert 'class="top-meta"' not in header
+    for metadata in (
+        "AGE 12-15",
+        "LOCALE zh-CN",
+        "Mainland Chinese junior-secondary students",
+    ):
+        assert metadata not in header
+
+
+def test_project_metadata_uses_compact_weighted_spans() -> None:
+    app = _run_app("PROJECT")
+
+    assert not app.exception
+    theme_markup = app.markdown[0].value
+    assert re.search(
+        r"\.top-meta span \{\s*font-size: 13px;\s*font-weight: 650;",
+        theme_markup,
+    )
+
+
+def test_project_and_generation_evidence_notes_have_distinct_presentations() -> None:
+    project = _run_app("PROJECT")
+    generation = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    generation.session_state["v2_active_page"] = "GENERATION STUDIO"
+    generation.session_state["v2_active_stage"] = "QUALITY CHECKS"
+    generation.run()
+
+    assert not project.exception
+    assert not generation.exception
+    project_note = next(
+        element.value
+        for element in project.markdown
+        if "Historical summary from the 2023 college-student study" in element.value
+    )
+    generation_note = next(
+        element.value
+        for element in generation.markdown
+        if "Automated checks are advisory; human review is required." in element.value
+    )
+    assert 'class="project-evidence-footnote"' in project_note
+    assert 'class="evidence-note"' in generation_note
+
+    theme_markup = project.markdown[0].value
+    project_style = re.search(
+        r"\.project-evidence-footnote \{(?P<body>.*?)\}",
+        theme_markup,
+        re.DOTALL,
+    )
+    warning_style = re.search(
+        r"\.evidence-note \{(?P<body>.*?)\}",
+        theme_markup,
+        re.DOTALL,
+    )
+    assert project_style is not None
+    assert warning_style is not None
+    assert "color: var(--muted);" in project_style.group("body")
+    assert "font-size: 13px;" in project_style.group("body")
+    assert "margin-top: 10px;" in project_style.group("body")
+    assert "border-left: 4px solid var(--orange);" in warning_style.group("body")
+    assert "padding: 8px 12px;" in warning_style.group("body")
 
 
 def test_construct_map_renders_responsive_svg_wheel() -> None:
@@ -362,7 +515,7 @@ def test_participant_preview_never_renders_research_metadata() -> None:
         assert hidden_term not in rendered
 
 
-def test_participant_header_stays_curated_when_selected_item_is_live() -> None:
+def test_participant_header_hides_selected_item_generation_mode() -> None:
     app = AppTest.from_string(
         """
 import streamlit as st
@@ -393,15 +546,16 @@ project = seed.validated_update(
 init_state()
 st.session_state["v2_active_page"] = "PARTICIPANT VIEW"
 st.session_state["v2_selected_item"] = live.item_id
-render_header(project, live_available=True)
+render_header(project)
 render(project, {}, None)
         """
     ).run()
 
     assert not app.exception
     markdown = _markdown(app)
-    assert '<span class="mode-badge">CURATED DEMO</span>' in markdown
-    assert '<span class="mode-badge">LIVE GENERATION</span>' not in markdown
+    header = _header_markup(app)
+    assert "CURATED DEMO" not in header
+    assert "LIVE GENERATION" not in header
     assert "LIVE STEM MUST NOT BE SHOWN" not in markdown
     assert "新学期社团第一次活动" in markdown
 
@@ -563,7 +717,7 @@ def test_research_download_projection_remains_a_five_item_demo() -> None:
     assert len(csv_rows) == 20
 
 
-def test_v2_launcher_and_readme_document_the_stable_demo_contract() -> None:
+def test_v2_launcher_and_readme_document_reference_and_live_access_contract() -> None:
     launcher = ROOT / "run_v2.ps1"
     readme = ROOT / "README_V2.md"
 
@@ -582,7 +736,13 @@ def test_v2_launcher_and_readme_document_the_stable_demo_contract() -> None:
         "OPENAI_API_KEY",
         "LLM_MODEL",
         "OPENAI_BASE_URL",
-        "CURATED DEMO",
+        "LIVE_ACCESS_CODE",
+        "Public reference items are available without model credentials or an "
+        "access code and are the stable presentation path.",
+        "Live generation requires both model configuration (`OPENAI_API_KEY` and "
+        "`LLM_MODEL`) and a session access-code unlock.",
+        "The unlock applies only to the current Streamlit session and does not "
+        "itself trigger a model call.",
         "2023 research lineage",
         "12-15",
         "scenario blueprint",
@@ -598,6 +758,7 @@ def test_v2_launcher_and_readme_document_the_stable_demo_contract() -> None:
         "individual personality inference",
     ):
         assert expected in documentation
+    assert "CURATED DEMO" not in documentation
 
 
 def test_status_palette_and_responsive_breakpoints_are_exposed() -> None:
@@ -758,7 +919,7 @@ def test_v2_ui_actions_do_not_depend_on_material_icon_tokens() -> None:
     app = _run_app("GENERATION STUDIO")
 
     assert not app.exception
-    for label in ("GENERATE", "LOAD CURATED EXAMPLE"):
+    for label in ("GENERATE", "LOAD REFERENCE ITEM"):
         button = _button(app, label)
         assert not button.proto.icon
         assert ":material/" not in str(button.proto)
@@ -796,6 +957,7 @@ render_provenance(item=item, anchors={})
 def test_generation_studio_exposes_stages_and_safe_curated_fallback(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("LIVE_ACCESS_CODE", raising=False)
 
     def forbidden_live_initialization(*_args, **_kwargs):
         raise AssertionError("disabled generation must not initialize a live client")
@@ -822,7 +984,7 @@ def test_generation_studio_exposes_stages_and_safe_curated_fallback(monkeypatch)
     ):
         assert stage in text
     assert _button(app, "GENERATE").disabled is True
-    assert _button(app, "LOAD CURATED EXAMPLE").disabled is False
+    assert _button(app, "LOAD REFERENCE ITEM").disabled is False
     assert _widget_with_key(app.selectbox, "v2_context_domain").value == "club"
     assert _widget_with_key(app.selectbox, "v2_selected_anchor").value == (
         "bfi2-sociability-01"
@@ -839,7 +1001,7 @@ def test_generation_studio_exposes_stages_and_safe_curated_fallback(monkeypatch)
     assert _button(app, "GENERATE").disabled is True
     assert "PROVENANCE" in _markdown(app)
 
-    _button(app, "LOAD CURATED EXAMPLE").click().run()
+    _button(app, "LOAD REFERENCE ITEM").click().run()
     assert not app.exception
     assert app.session_state["v2_generation_mode"] == "CURATED DEMO"
     assert app.session_state["v2_construct_spec"].facet_id == "sociability"
@@ -850,7 +1012,7 @@ def test_generation_studio_exposes_stages_and_safe_curated_fallback(monkeypatch)
     assert app.session_state["v2_selected_item"] == "demo-extraversion-sociability"
 
 
-def test_curated_example_requires_exact_anchor_and_context_match() -> None:
+def test_reference_item_requires_exact_anchor_and_context_match() -> None:
     seed = build_demo_project().items["demo-extraversion-sociability"]
     app = _run_app("GENERATION STUDIO")
 
@@ -860,8 +1022,13 @@ def test_curated_example_requires_exact_anchor_and_context_match() -> None:
     ).run()
 
     assert not app.exception
-    assert _button(app, "LOAD CURATED EXAMPLE").disabled is True
+    assert _button(app, "LOAD REFERENCE ITEM").disabled is True
     assert seed.construct_spec.definition_zh not in _markdown(app)
+    assert any(
+        info.value
+        == "No reference item matches the selected domain, facet, anchor, and context."
+        for info in app.info
+    )
 
     _widget_with_key(app.selectbox, "v2_selected_anchor").set_value(
         "bfi2-sociability-01"
@@ -871,7 +1038,7 @@ def test_curated_example_requires_exact_anchor_and_context_match() -> None:
     ).run()
 
     assert not app.exception
-    assert _button(app, "LOAD CURATED EXAMPLE").disabled is True
+    assert _button(app, "LOAD REFERENCE ITEM").disabled is True
     assert seed.construct_spec.definition_zh not in _markdown(app)
 
 
@@ -894,9 +1061,305 @@ def test_generation_provenance_inspector_lists_all_options_and_checks() -> None:
         assert (check.recommendation or "No change recommended.") in markdown
 
 
+def test_live_generation_is_locked_by_default_with_complete_configuration(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
+
+    app = _run_app("GENERATION STUDIO")
+
+    assert not app.exception
+    assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_error"] is None
+    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert _button(app, "GENERATE").disabled is True
+    assert _button(app, "LOAD REFERENCE ITEM").disabled is False
+    assert not any(widget.key == "v2_generation_mode" for widget in app.selectbox)
+    assert [widget.label for widget in app.selectbox] == [
+        "DOMAIN",
+        "FACET",
+        "CONTEXT DOMAIN",
+        "ANCHOR",
+    ]
+
+
+def test_generation_studio_resets_invalid_internal_mode(monkeypatch) -> None:
+    monkeypatch.delenv("LIVE_ACCESS_CODE", raising=False)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    app.session_state["v2_generation_mode"] = "INVALID TEST MODE"
+
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["v2_generation_mode"] == GenerationMode.CURATED.value
+
+
+def test_wrong_live_access_code_is_rejected(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
+    app = _run_app("GENERATION STUDIO")
+
+    _widget_with_key(app.text_input, "v2_live_access_input").set_value(
+        "wrong-test-code"
+    )
+    _button(app, "UNLOCK").click().run()
+
+    assert not app.exception
+    assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert app.session_state["v2_live_access_input"] == ""
+    assert app.error[0].value == "Access code not recognized."
+    assert _button(app, "GENERATE").disabled is True
+
+
+def test_correct_live_access_code_unlocks_without_initializing_model(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
+    calls: list[str] = []
+
+    def forbidden_config():
+        calls.append("config")
+        raise AssertionError("unlock must not initialize model configuration")
+
+    def forbidden_client(_config):
+        calls.append("client")
+        raise AssertionError("unlock must not initialize a model client")
+
+    monkeypatch.setattr(
+        generation.LiveModelConfig,
+        "from_env",
+        staticmethod(forbidden_config),
+    )
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", forbidden_client)
+    app = _run_app("GENERATION STUDIO")
+
+    _widget_with_key(app.text_input, "v2_live_access_input").set_value(
+        "test-only-live-access"
+    )
+    _button(app, "UNLOCK").click().run()
+
+    assert not app.exception
+    assert calls == []
+    assert app.session_state["v2_live_unlocked"] is True
+    assert (
+        app.session_state["v2_live_access_fingerprint"]
+        == live_access.live_access_fingerprint()
+    )
+    assert app.session_state["v2_live_access_error"] is None
+    assert app.session_state["v2_live_access_input"] == ""
+    assert _button(app, "GENERATE").disabled is False
+    assert "LIVE GENERATION UNLOCKED FOR THIS SESSION" in "\n".join(
+        caption.value for caption in app.caption
+    )
+
+
+@pytest.mark.parametrize("configured_code", (None, "   "))
+def test_absent_or_blank_live_access_configuration_fails_closed(
+    monkeypatch,
+    configured_code,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    if configured_code is None:
+        monkeypatch.delenv("LIVE_ACCESS_CODE", raising=False)
+    else:
+        monkeypatch.setenv("LIVE_ACCESS_CODE", configured_code)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    app.session_state["v2_live_unlocked"] = True
+    app.session_state["v2_live_access_fingerprint"] = "stale-test-fingerprint"
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert _button(app, "GENERATE").disabled is True
+    assert not any(button.label == "UNLOCK" for button in app.button)
+    assert not any(widget.key == "v2_live_access_input" for widget in app.text_input)
+    assert "Live generation access is not configured." in "\n".join(
+        info.value for info in app.info
+    )
+
+
+def test_forced_generate_event_cannot_bypass_live_access_lock(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
+    calls: list[str] = []
+
+    def forbidden_config():
+        calls.append("config")
+        raise AssertionError("locked generation reached model configuration")
+
+    _force_generate_event(monkeypatch)
+    monkeypatch.setattr(
+        generation.LiveModelConfig,
+        "from_env",
+        staticmethod(forbidden_config),
+    )
+    app = _run_app("GENERATION STUDIO")
+
+    assert not app.exception
+    assert calls == []
+    assert app.session_state["v2_generation_error"] == "Live generation is locked."
+    assert app.error[0].value == "Live generation is locked."
+
+
+@pytest.mark.parametrize("replacement_code", (None, "   ", "test-only-access-b"))
+def test_access_configuration_change_invalidates_and_clears_session_grant(
+    monkeypatch,
+    replacement_code,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access-a")
+    app = _run_app("GENERATION STUDIO")
+    _widget_with_key(app.text_input, "v2_live_access_input").set_value(
+        "test-only-access-a"
+    )
+    _button(app, "UNLOCK").click().run()
+    stale_fingerprint = app.session_state["v2_live_access_fingerprint"]
+
+    assert stale_fingerprint == live_access.live_access_fingerprint()
+    assert _button(app, "GENERATE").disabled is False
+
+    if replacement_code is None:
+        monkeypatch.delenv("LIVE_ACCESS_CODE", raising=False)
+    else:
+        monkeypatch.setenv("LIVE_ACCESS_CODE", replacement_code)
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert _button(app, "GENERATE").disabled is True
+
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access-a")
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert _button(app, "GENERATE").disabled is True
+
+
+@pytest.mark.parametrize(
+    ("api_key", "model_id"),
+    (
+        (None, "test-only-model"),
+        ("   ", "test-only-model"),
+        ("test-only-api-key", None),
+        ("test-only-api-key", "   "),
+    ),
+)
+def test_forced_generate_with_missing_model_values_preserves_display_state(
+    monkeypatch,
+    api_key,
+    model_id,
+) -> None:
+    if api_key is None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    else:
+        monkeypatch.setenv("OPENAI_API_KEY", api_key)
+    if model_id is None:
+        monkeypatch.delenv("LLM_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("LLM_MODEL", model_id)
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
+    monkeypatch.delenv("LLM_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("OPENAI_TIMEOUT", raising=False)
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    client_calls: list[object] = []
+
+    def forbidden_client(config):
+        client_calls.append(config)
+        raise AssertionError("invalid configuration reached model client")
+
+    _force_generate_event(monkeypatch)
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", forbidden_client)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    _authorize_live_session(app)
+    statuses = _seed_generation_display_state(app, seed)
+
+    app.run()
+
+    assert not app.exception
+    assert client_calls == []
+    assert app.error[-1].value == "Live model configuration is unavailable."
+    _assert_generation_display_state_unchanged(app, seed, statuses)
+
+
+def test_forced_generate_with_invalid_timeout_preserves_display_state(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "0")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    client_calls: list[object] = []
+
+    def forbidden_client(config):
+        client_calls.append(config)
+        raise AssertionError("invalid configuration reached model client")
+
+    _force_generate_event(monkeypatch)
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", forbidden_client)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    _authorize_live_session(app)
+    statuses = _seed_generation_display_state(app, seed)
+
+    app.run()
+
+    assert not app.exception
+    assert client_calls == []
+    assert app.error[-1].value == "Live model configuration is unavailable."
+    _assert_generation_display_state_unchanged(app, seed, statuses)
+
+
+def test_reference_loading_while_locked_never_initializes_model(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("LIVE_ACCESS_CODE", raising=False)
+    calls: list[str] = []
+
+    def forbidden_model_initialization(*_args, **_kwargs):
+        calls.append("model")
+        raise AssertionError("reference loading reached model code")
+
+    monkeypatch.setattr(
+        generation.LiveModelConfig,
+        "from_env",
+        staticmethod(forbidden_model_initialization),
+    )
+    monkeypatch.setattr(
+        generation,
+        "OpenAICompatibleClient",
+        forbidden_model_initialization,
+    )
+    app = _run_app("GENERATION STUDIO")
+
+    _button(app, "LOAD REFERENCE ITEM").click().run()
+
+    assert not app.exception
+    assert calls == []
+    assert app.session_state["v2_generation_mode"] == GenerationMode.CURATED.value
+    assert app.session_state["v2_candidate_item"].generation_mode is GenerationMode.CURATED
+
+
 def test_live_success_commits_session_only_after_persistence(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
     monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
     seed = build_demo_project().items["demo-extraversion-sociability"]
     generated = seed.validated_update(
         item_id="live-sociability-saved",
@@ -925,6 +1388,7 @@ def test_live_success_commits_session_only_after_persistence(monkeypatch) -> Non
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
+    _authorize_live_session(app)
     app.session_state["v2_candidate_item"] = seed
     app.session_state["v2_selected_item"] = seed.item_id
     app.session_state["v2_stage_status"] = {
@@ -956,6 +1420,7 @@ def test_live_persistence_failure_restores_session_and_is_public(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
     monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
     seed = build_demo_project().items["demo-extraversion-sociability"]
     generated = seed.validated_update(
         item_id="live-sociability-not-saved",
@@ -979,6 +1444,7 @@ def test_live_persistence_failure_restores_session_and_is_public(
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
+    _authorize_live_session(app)
     app.session_state["v2_candidate_item"] = seed
     app.session_state["v2_selected_item"] = seed.item_id
     app.session_state["v2_stage_status"] = {
@@ -1061,7 +1527,7 @@ render(project, load_anchor_asset(ANCHOR_ASSET), service)
     assert "PERSISTED REVIEW OPTION" in markdown
     assert "HUMAN_REVIEWED" in markdown
 
-    _button(app, "LOAD CURATED EXAMPLE").click().run()
+    _button(app, "LOAD REFERENCE ITEM").click().run()
     assert not app.exception
     loaded = app.session_state["v2_candidate_item"]
     assert loaded.stem_zh == "PERSISTED REVIEW STEM"
@@ -1073,6 +1539,7 @@ render(project, load_anchor_asset(ANCHOR_ASSET), service)
 def test_construct_failure_does_not_reuse_previous_live_candidate(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
     monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
     seed = build_demo_project().items["demo-extraversion-sociability"]
     old_live = seed.validated_update(
         item_id="live-sociability-previous",
@@ -1109,6 +1576,7 @@ def test_construct_failure_does_not_reuse_previous_live_candidate(monkeypatch) -
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
+    _authorize_live_session(app)
     app.session_state["v2_active_stage"] = "RESPONSE OPTIONS"
     app.session_state["v2_construct_spec"] = old_live.construct_spec
     app.session_state["v2_scenario_blueprint"] = old_live.scenario_blueprint
@@ -1144,6 +1612,7 @@ def test_construct_failure_does_not_reuse_previous_live_candidate(monkeypatch) -
 def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "fake-app-test-key")
     monkeypatch.setenv("LLM_MODEL", "fake-app-test-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
     seed = build_demo_project().items["demo-extraversion-sociability"]
     partial_candidate = seed.validated_update(
         item_id="live-sociability-partial",
@@ -1192,6 +1661,7 @@ def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch)
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
+    _authorize_live_session(app)
     app.run()
 
     assert not app.exception
@@ -1215,11 +1685,11 @@ def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch)
     )
     assert app.session_state["v2_stage_status"]["QUALITY CHECKS"] == "ERROR"
 
-    _button(app, "LOAD CURATED EXAMPLE").click().run()
+    _button(app, "LOAD REFERENCE ITEM").click().run()
     assert not app.exception
     assert app.session_state["v2_generation_mode"] == "CURATED DEMO"
-    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
-    assert '<span class="mode-badge">LIVE GENERATION</span>' not in _markdown(app)
+    assert "CURATED DEMO" not in _header_markup(app)
+    assert "LIVE GENERATION" not in _header_markup(app)
     assert app.session_state["v2_candidate_item"].generation_mode is GenerationMode.CURATED
     assert app.session_state["v2_candidate_item"].item_id == (
         "demo-extraversion-sociability"
@@ -1658,7 +2128,7 @@ render(project, load_anchor_asset(ANCHOR_ASSET), WorkbenchService(repository))
     assert after_conflict.review_versions[0].note == "external save"
 
 
-def test_review_selection_updates_header_mode_in_the_same_rerun() -> None:
+def test_review_header_never_exposes_selected_item_generation_mode() -> None:
     app = AppTest.from_string(
         """
 import streamlit as st
@@ -1688,31 +2158,32 @@ project = seed.validated_update(
 init_state()
 st.session_state["v2_active_page"] = "REVIEW"
 sync_selected_item_from_review(project)
-render_header(project, live_available=True)
+render_header(project)
 render(project, {}, None)
         """,
         default_timeout=10,
     ).run()
 
     assert not app.exception
-    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
+    assert "CURATED DEMO" not in _header_markup(app)
+    assert "LIVE GENERATION" not in _header_markup(app)
     _widget_with_key(app.selectbox, "v2_review_item").set_value(
         "live-review-selection"
     ).run()
 
     assert not app.exception
-    assert '<span class="mode-badge">LIVE GENERATION</span>' in _markdown(app)
-    assert '<span class="mode-badge">CURATED DEMO</span>' not in _markdown(app)
+    assert "CURATED DEMO" not in _header_markup(app)
+    assert "LIVE GENERATION" not in _header_markup(app)
 
     _widget_with_key(app.selectbox, "v2_review_item").set_value(
         "demo-extraversion-sociability"
     ).run()
     assert not app.exception
-    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
-    assert '<span class="mode-badge">LIVE GENERATION</span>' not in _markdown(app)
+    assert "CURATED DEMO" not in _header_markup(app)
+    assert "LIVE GENERATION" not in _header_markup(app)
 
 
-def test_review_header_uses_selected_live_item_generation_mode() -> None:
+def test_header_never_exposes_live_generation_mode() -> None:
     app = AppTest.from_string(
         """
 import streamlit as st
@@ -1738,11 +2209,11 @@ live_project = project.validated_update(
     selected_item_id=live_item.item_id,
 )
 st.session_state["v2_active_page"] = "REVIEW"
-render_header(live_project, live_available=True)
+render_header(live_project)
         """
     ).run()
 
     assert not app.exception
-    markdown = _markdown(app)
-    assert '<span class="mode-badge">LIVE GENERATION</span>' in markdown
-    assert '<span class="mode-badge">CURATED DEMO</span>' not in markdown
+    header = _header_markup(app)
+    assert "LIVE GENERATION" not in header
+    assert "CURATED DEMO" not in header

@@ -1,5 +1,3 @@
-import os
-
 import streamlit as st
 
 from psychometric_v2.config import ANCHOR_ASSET, WORKSPACE_ROOT
@@ -31,12 +29,7 @@ construct_anchors = load_anchor_asset(ANCHOR_ASSET)
 workbench = WorkbenchService(repository)
 review.sync_selected_item_from_review(research_project)
 
-live_available = bool(
-    os.getenv("OPENAI_API_KEY", "").strip()
-    and os.getenv("LLM_MODEL", "").strip()
-)
-
-render_header(research_project, live_available=live_available)
+render_header(research_project)
 active_page = render_navigation()
 page_renderers = {
     "PROJECT": project.render,

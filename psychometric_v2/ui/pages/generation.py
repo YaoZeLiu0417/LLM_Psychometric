@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import hmac
 import html
 import os
 
 import streamlit as st
 
 from psychometric_v2.config import LiveModelConfig, ModelUnavailable
+from psychometric_v2.live_access import (
+    live_access_configured,
+    live_access_fingerprint,
+    verify_live_access_code,
+)
 from psychometric_v2.model_client import OpenAICompatibleClient
 from psychometric_v2.models import (
     CandidateItem,
@@ -38,6 +44,38 @@ def _live_environment_present() -> bool:
         os.getenv("OPENAI_API_KEY", "").strip()
         and os.getenv("LLM_MODEL", "").strip()
     )
+
+
+def _clear_live_access_grant() -> None:
+    st.session_state["v2_live_unlocked"] = False
+    st.session_state["v2_live_access_fingerprint"] = None
+
+
+def _live_access_granted() -> bool:
+    current_fingerprint = live_access_fingerprint()
+    stored_fingerprint = st.session_state.get("v2_live_access_fingerprint")
+    if (
+        current_fingerprint is None
+        or not st.session_state.get("v2_live_unlocked")
+        or not isinstance(stored_fingerprint, str)
+        or not hmac.compare_digest(stored_fingerprint, current_fingerprint)
+    ):
+        _clear_live_access_grant()
+        return False
+    return True
+
+
+def _submit_live_access_code() -> None:
+    submitted = str(st.session_state.get("v2_live_access_input", ""))
+    fingerprint = live_access_fingerprint()
+    if fingerprint is not None and verify_live_access_code(submitted):
+        st.session_state["v2_live_unlocked"] = True
+        st.session_state["v2_live_access_fingerprint"] = fingerprint
+        st.session_state["v2_live_access_error"] = None
+    else:
+        _clear_live_access_grant()
+        st.session_state["v2_live_access_error"] = "Access code not recognized."
+    st.session_state["v2_live_access_input"] = ""
 
 
 def _facet_seed(
@@ -305,20 +343,18 @@ def render(
     pending_mode = st.session_state.pop("v2_pending_generation_mode", None)
     if pending_mode in (GenerationMode.CURATED.value, GenerationMode.LIVE.value):
         st.session_state["v2_generation_mode"] = pending_mode
+    mode = st.session_state.get("v2_generation_mode")
+    if mode not in (GenerationMode.CURATED.value, GenerationMode.LIVE.value):
+        mode = GenerationMode.CURATED.value
+        st.session_state["v2_generation_mode"] = mode
     st.markdown('<div class="page-kicker">STAGED ITEM DEVELOPMENT</div>', unsafe_allow_html=True)
     st.markdown('<div class="workspace-heading">GENERATION STUDIO</div>', unsafe_allow_html=True)
 
     domain_ids = tuple(DOMAINS)
     if st.session_state.get("v2_selected_domain") not in domain_ids:
         st.session_state["v2_selected_domain"] = domain_ids[0]
-    controls = st.columns(5, gap="small")
+    controls = st.columns(4, gap="small")
     with controls[0]:
-        mode = st.selectbox(
-            "GENERATION MODE",
-            (GenerationMode.CURATED.value, GenerationMode.LIVE.value),
-            key="v2_generation_mode",
-        )
-    with controls[1]:
         domain_id = st.selectbox(
             "DOMAIN",
             domain_ids,
@@ -330,7 +366,7 @@ def render(
     )
     if st.session_state.get("v2_selected_facet") not in facet_ids:
         st.session_state["v2_selected_facet"] = facet_ids[0]
-    with controls[2]:
+    with controls[1]:
         facet_id = st.selectbox(
             "FACET",
             facet_ids,
@@ -355,7 +391,7 @@ def render(
         )
     elif st.session_state.get("v2_context_domain") not in context_domains:
         st.session_state["v2_context_domain"] = context_domains[0]
-    with controls[3]:
+    with controls[2]:
         context_domain = st.selectbox(
             "CONTEXT DOMAIN",
             context_domains,
@@ -376,7 +412,7 @@ def render(
         st.session_state["v2_selected_anchor"] = default_curated.anchor_ids[0]
     elif st.session_state.get("v2_selected_anchor") not in anchor_ids:
         st.session_state["v2_selected_anchor"] = anchor_ids[0]
-    with controls[4]:
+    with controls[3]:
         anchor_id = st.selectbox(
             "ANCHOR",
             anchor_ids,
@@ -392,27 +428,49 @@ def render(
         context_domain,
     )
     live_ready = _live_environment_present()
+    live_access_granted = _live_access_granted()
+    if live_access_granted:
+        st.caption("LIVE GENERATION UNLOCKED FOR THIS SESSION")
+    elif live_access_configured():
+        with st.expander("UNLOCK LIVE GENERATION"):
+            st.text_input(
+                "LIVE ACCESS CODE",
+                type="password",
+                key="v2_live_access_input",
+            )
+            st.button(
+                "UNLOCK",
+                key="v2_unlock_live",
+                on_click=_submit_live_access_code,
+            )
+    else:
+        st.info("Live generation access is not configured.")
+
+    access_error = st.session_state.get("v2_live_access_error")
+    if access_error:
+        st.error(str(access_error))
+
     action_columns = st.columns(2, gap="small")
     with action_columns[0]:
         generate = st.button(
             "GENERATE",
             key="v2_generate",
-            disabled=mode != GenerationMode.LIVE.value or not live_ready,
+            disabled=not live_ready or not live_access_granted,
             use_container_width=True,
         )
     with action_columns[1]:
         load_curated = st.button(
-            "LOAD CURATED EXAMPLE",
+            "LOAD REFERENCE ITEM",
             key="v2_load_curated",
             disabled=curated is None,
             use_container_width=True,
         )
 
-    if mode == GenerationMode.LIVE.value and not live_ready:
+    if not live_ready:
         st.info("Live generation requires OPENAI_API_KEY and LLM_MODEL configuration.")
     if curated is None:
         st.info(
-            "No curated example matches the selected domain, facet, anchor, and context."
+            "No reference item matches the selected domain, facet, anchor, and context."
         )
 
     if load_curated and curated is not None:
@@ -420,63 +478,68 @@ def render(
         st.rerun()
 
     if generate:
-        previous_candidate = st.session_state.get("v2_candidate_item")
-        previous_selected = st.session_state.get("v2_selected_item")
-        st.session_state["v2_candidate_item"] = None
-        st.session_state["v2_construct_spec"] = None
-        st.session_state["v2_scenario_blueprint"] = None
-        st.session_state["v2_generation_options"] = None
-        st.session_state["v2_generation_error"] = None
-        try:
-            config = LiveModelConfig.from_env()
-            client = OpenAICompatibleClient(config)
-            pipeline = GenerationPipeline(client)
-            generated = pipeline.generate_candidate(
-                project.config,
-                anchors[anchor_id],
-                context_domain,
-            )
+        if not _live_access_granted():
+            st.session_state["v2_generation_error"] = "Live generation is locked."
+        else:
             try:
-                service.save_generated_item(project.config.project_id, generated)
-            except (KeyError, OSError, ValueError):
-                st.session_state["v2_construct_spec"] = generated.construct_spec
-                st.session_state["v2_scenario_blueprint"] = (
-                    generated.scenario_blueprint
+                config = LiveModelConfig.from_env()
+                mode = GenerationMode.LIVE.value
+                st.session_state["v2_generation_mode"] = mode
+                previous_candidate = st.session_state.get("v2_candidate_item")
+                previous_selected = st.session_state.get("v2_selected_item")
+                st.session_state["v2_candidate_item"] = None
+                st.session_state["v2_construct_spec"] = None
+                st.session_state["v2_scenario_blueprint"] = None
+                st.session_state["v2_generation_options"] = None
+                st.session_state["v2_generation_error"] = None
+                client = OpenAICompatibleClient(config)
+                pipeline = GenerationPipeline(client)
+                generated = pipeline.generate_candidate(
+                    project.config,
+                    anchors[anchor_id],
+                    context_domain,
                 )
-                st.session_state["v2_generation_options"] = generated
-                st.session_state["v2_candidate_item"] = previous_candidate
-                st.session_state["v2_selected_item"] = previous_selected
-                st.session_state["v2_stage_status"] = {
-                    "CONSTRUCT SPECIFICATION": "COMPLETE",
-                    "SCENARIO BLUEPRINT": "COMPLETE",
-                    "RESPONSE OPTIONS": "COMPLETE",
-                    "QUALITY CHECKS": "NOT SAVED",
-                }
+                try:
+                    service.save_generated_item(project.config.project_id, generated)
+                except (KeyError, OSError, ValueError):
+                    st.session_state["v2_construct_spec"] = generated.construct_spec
+                    st.session_state["v2_scenario_blueprint"] = (
+                        generated.scenario_blueprint
+                    )
+                    st.session_state["v2_generation_options"] = generated
+                    st.session_state["v2_candidate_item"] = previous_candidate
+                    st.session_state["v2_selected_item"] = previous_selected
+                    st.session_state["v2_stage_status"] = {
+                        "CONSTRUCT SPECIFICATION": "COMPLETE",
+                        "SCENARIO BLUEPRINT": "COMPLETE",
+                        "RESPONSE OPTIONS": "COMPLETE",
+                        "QUALITY CHECKS": "NOT SAVED",
+                    }
+                    st.session_state["v2_generation_error"] = (
+                        "Generated item could not be saved."
+                    )
+                else:
+                    st.session_state["v2_construct_spec"] = generated.construct_spec
+                    st.session_state["v2_scenario_blueprint"] = (
+                        generated.scenario_blueprint
+                    )
+                    st.session_state["v2_generation_options"] = generated
+                    st.session_state["v2_candidate_item"] = generated
+                    st.session_state["v2_selected_item"] = generated.item_id
+                    st.session_state["v2_stage_status"] = {
+                        stage: "COMPLETE" for stage in STAGES
+                    }
+                    st.rerun()
+            except GenerationStageError as error:
+                _store_partial_results(error)
+            except ModelUnavailable:
                 st.session_state["v2_generation_error"] = (
-                    "Generated item could not be saved."
+                    "Live model configuration is unavailable."
                 )
-            else:
-                st.session_state["v2_construct_spec"] = generated.construct_spec
-                st.session_state["v2_scenario_blueprint"] = (
-                    generated.scenario_blueprint
+            except (KeyError, ValueError):
+                st.session_state["v2_generation_error"] = (
+                    "Live generation could not be completed."
                 )
-                st.session_state["v2_generation_options"] = generated
-                st.session_state["v2_candidate_item"] = generated
-                st.session_state["v2_selected_item"] = generated.item_id
-                st.session_state["v2_stage_status"] = {
-                    stage: "COMPLETE" for stage in STAGES
-                }
-                st.rerun()
-        except GenerationStageError as error:
-            _store_partial_results(error)
-        except ModelUnavailable:
-            st.session_state["v2_generation_error"] = (
-                "Live model configuration is unavailable."
-            )
-        except (KeyError, ValueError):
-            st.session_state["v2_generation_error"] = (
-                "Live generation could not be completed."
-            )
 
     error_message = st.session_state.get("v2_generation_error")
     if error_message:

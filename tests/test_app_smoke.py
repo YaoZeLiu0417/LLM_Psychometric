@@ -11,13 +11,14 @@ from psychometric_v2 import config as v2_config
 from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.models import (
     CandidateItem,
+    ConstructAnchor,
     GenerationMetadata,
     GenerationMode,
     ReviewAction,
 )
 from psychometric_v2.pipeline import GenerationStageError
 from psychometric_v2.repository import JsonProjectRepository
-from psychometric_v2.ui.pages import generation, review
+from psychometric_v2.ui.pages import construct_map, generation, review
 from psychometric_v2.workbench import WorkbenchService
 
 
@@ -190,6 +191,78 @@ def test_each_page_can_be_loaded_from_preset_session_state() -> None:
         assert app.session_state["v2_active_page"] == page
         for expected in expected_content:
             assert expected in markdown, (page, expected)
+
+
+def test_construct_map_wheel_uses_compact_labels_and_bilingual_hover() -> None:
+    trace = construct_map._taxonomy_figure().data[0]
+
+    assert tuple(trace.labels) == (
+        "E",
+        "A",
+        "C",
+        "N",
+        "O",
+        "Social",
+        "Assert",
+        "Energy",
+        "Compassion",
+        "Respect",
+        "Trust",
+        "Organized",
+        "Productive",
+        "Responsible",
+        "Anxiety",
+        "Depression",
+        "Volatility",
+        "Curiosity",
+        "Aesthetic",
+        "Creative",
+    )
+    assert tuple(trace.customdata[0]) == ("Extraversion", "外向性")
+    assert tuple(trace.customdata[8]) == ("Compassion", "同情")
+    assert tuple(trace.customdata[-1]) == (
+        "Creative Imagination",
+        "创造想象",
+    )
+    assert trace.textinfo == "label"
+    assert trace.hovertemplate == (
+        "<b>%{customdata[0]}</b><br>%{customdata[1]}<extra></extra>"
+    )
+
+
+def test_construct_map_source_markup_is_continuous_and_escaped() -> None:
+    anchor = ConstructAnchor.model_construct(
+        anchor_id="anchor-<unsafe>",
+        item_number=1,
+        text_zh="<script>alert('x')</script>",
+        legacy_feature="Sociability",
+        domain_id="extraversion",
+        facet_id="sociability",
+        reverse=True,
+    )
+
+    markup = construct_map._source_list_markup((anchor,))
+
+    assert re.search(r"(?m)^[ \t]{4,}<", markup) is None
+    assert markup.count('<div class="source-row">') == 1
+    assert "anchor-&lt;unsafe&gt;" in markup
+    assert "&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;" in markup
+    assert "REVERSE KEYED" in markup
+
+
+def test_construct_map_renders_all_source_anchors_without_code_markup() -> None:
+    app = _run_app("CONSTRUCT MAP")
+
+    assert not app.exception
+    source_markup = next(
+        element.value
+        for element in app.markdown
+        if '<div class="source-list">' in element.value
+    )
+    assert re.search(r"(?m)^[ \t]{4,}<", source_markup) is None
+    assert source_markup.count('<div class="source-row">') == 4
+    for item_number in range(1, 5):
+        assert f"bfi2-sociability-{item_number:02d}" in source_markup
 
 
 def test_navigation_survives_reruns_and_writes_active_page() -> None:

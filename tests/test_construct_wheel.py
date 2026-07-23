@@ -104,7 +104,6 @@ def test_svg_wheel_preserves_taxonomy_structure_colors_and_titles() -> None:
     titles = root.findall(f".//{TITLE}")
 
     assert root.attrib["viewBox"] == "0 0 600 600"
-    assert root.attrib["role"] == "img"
     assert "Big Five" in root.attrib["aria-label"]
     assert "青少年大五人格构念分类" in root.attrib["aria-label"]
     descriptions = root.findall(f".//{{{SVG_NS}}}desc")
@@ -134,6 +133,42 @@ def test_svg_wheel_preserves_taxonomy_structure_colors_and_titles() -> None:
     assert all(
         path.attrib["aria-label"] == path.find(TITLE).text
         for path in (*domain_paths, *facet_paths)
+    )
+
+
+def test_svg_wheel_exposes_segments_to_assistive_technology() -> None:
+    root = ET.fromstring(_render())
+    descriptions = root.findall(f".//{{{SVG_NS}}}desc")
+    domain_paths = _elements(root, PATH, "construct-wheel__domain")
+    facet_paths = _elements(root, PATH, "construct-wheel__facet")
+    paths = (*domain_paths, *facet_paths)
+    domain_labels = _elements(root, TEXT, "construct-wheel__domain-label")
+    facet_labels = _elements(root, TEXT, "construct-wheel__facet-label")
+    labels = (*domain_labels, *facet_labels)
+
+    assert {
+        "root_role": root.attrib.get("role"),
+        "root_describedby": root.attrib.get("aria-describedby"),
+        "description_ids": [
+            description.attrib.get("id") for description in descriptions
+        ],
+        "segment_roles": {path.attrib.get("role") for path in paths},
+        "hidden_text_values": {label.attrib.get("aria-hidden") for label in labels},
+    } == {
+        "root_role": "group",
+        "root_describedby": "construct-wheel-description",
+        "description_ids": ["construct-wheel-description"],
+        "segment_roles": {"img"},
+        "hidden_text_values": {"true"},
+    }
+    assert len(paths) == 20
+    assert len(labels) == 20
+    assert [path.attrib["data-domain-id"] for path in domain_paths] == list(
+        DOMAINS
+    )
+    assert [path.attrib["data-facet-id"] for path in facet_paths] == list(FACETS)
+    assert all(
+        path.attrib["aria-label"] == path.find(TITLE).text for path in paths
     )
 
 

@@ -130,6 +130,7 @@ def _segment(
             "fill": color,
             "stroke": "#F7F7F5",
             "stroke-width": "2",
+            "role": "img",
             "aria-label": accessible_name,
         },
     )
@@ -147,8 +148,9 @@ def build_construct_wheel_svg(
             "class": "construct-wheel",
             "viewBox": "0 0 600 600",
             "preserveAspectRatio": "xMidYMid meet",
-            "role": "img",
+            "role": "group",
             "aria-label": "Big Five construct taxonomy / 青少年大五人格构念分类",
+            "aria-describedby": "construct-wheel-description",
             "data-outer-radius": _n(_OUTER_RADIUS),
             "data-domain-radius": _n(_DOMAIN_RADIUS),
             "style": (
@@ -157,7 +159,9 @@ def build_construct_wheel_svg(
             ),
         },
     )
-    ET.SubElement(root, "desc").text = (
+    ET.SubElement(
+        root, "desc", {"id": "construct-wheel-description"}
+    ).text = (
         "Five Big Five domains and fifteen source-anchored facets / "
         "大五人格五个领域与十五个可溯源子维度"
     )
@@ -214,6 +218,7 @@ def build_construct_wheel_svg(
                 "font-weight": "700",
                 "letter-spacing": "0",
                 "pointer-events": "none",
+                "aria-hidden": "true",
             },
         ).text = _DOMAIN_WHEEL_LABELS[domain_id]
 
@@ -236,6 +241,7 @@ def build_construct_wheel_svg(
                 "font-weight": "600",
                 "letter-spacing": "0",
                 "pointer-events": "none",
+                "aria-hidden": "true",
             },
         ).text = _FACET_WHEEL_LABELS[facet_id]
 

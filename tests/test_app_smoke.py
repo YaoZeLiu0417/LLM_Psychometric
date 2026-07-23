@@ -475,11 +475,27 @@ human_reviewed = base.validated_update(
         constraint_snapshot={},
     ),
 )
-pilot = base.validated_update(
-    item_id="live-pilot-candidate",
+pilot_one = base.validated_update(
+    item_id="live-pilot-candidate-one",
     stem_zh="PILOT ITEM VISIBLE TO PARTICIPANTS",
     options=tuple(
-        option.validated_update(text_zh=f"PILOT OPTION {option.display_order}")
+        option.validated_update(text_zh=f"PILOT ONE OPTION {option.display_order}")
+        for option in base.options
+    ),
+    generation_mode=GenerationMode.LIVE,
+    evidence_status=EvidenceStatus.PILOT_CANDIDATE,
+    model_id="fake-model",
+    generation_metadata=GenerationMetadata(
+        model_id="fake-model",
+        prompt_version=base.prompt_version,
+        constraint_snapshot={},
+    ),
+)
+pilot_two = base.validated_update(
+    item_id="live-pilot-candidate-two",
+    stem_zh="SECOND PILOT STEM VISIBLE TO PARTICIPANTS",
+    options=tuple(
+        option.validated_update(text_zh=f"PILOT TWO OPTION {option.display_order}")
         for option in base.options
     ),
     generation_mode=GenerationMode.LIVE,
@@ -496,9 +512,10 @@ project = seed.validated_update(
         **dict(seed.items),
         curated_reference.item_id: curated_reference,
         human_reviewed.item_id: human_reviewed,
-        pilot.item_id: pilot,
+        pilot_one.item_id: pilot_one,
+        pilot_two.item_id: pilot_two,
     },
-    selected_item_id=pilot.item_id,
+    selected_item_id=pilot_one.item_id,
 )
 init_state()
 render(project, {}, None)
@@ -508,15 +525,36 @@ render(project, {}, None)
     assert not app.exception
     markdown = _markdown(app)
     assert "PILOT ITEM VISIBLE TO PARTICIPANTS" in markdown
+    assert "SECOND PILOT STEM VISIBLE TO PARTICIPANTS" not in markdown
     assert "HUMAN REVIEWED ITEM MUST STAY HIDDEN" not in markdown
     assert "CURATED REFERENCE ITEM MUST STAY HIDDEN" not in markdown
-    assert "1 / 1" in markdown
+    assert "1 / 2" in markdown
     assert len(app.radio) == 1
     assert tuple(app.radio[0].options) == (
-        "PILOT OPTION 1",
-        "PILOT OPTION 2",
-        "PILOT OPTION 3",
-        "PILOT OPTION 4",
+        "PILOT ONE OPTION 1",
+        "PILOT ONE OPTION 2",
+        "PILOT ONE OPTION 3",
+        "PILOT ONE OPTION 4",
+    )
+
+    project = build_demo_project()
+    first_option_id = project.items[project.selected_item_id].options[0].option_id
+    app.radio[0].set_value(first_option_id).run()
+    _button(app, "→").click().run()
+
+    assert not app.exception
+    markdown = _markdown(app)
+    assert "PILOT ITEM VISIBLE TO PARTICIPANTS" not in markdown
+    assert "SECOND PILOT STEM VISIBLE TO PARTICIPANTS" in markdown
+    assert "HUMAN REVIEWED ITEM MUST STAY HIDDEN" not in markdown
+    assert "CURATED REFERENCE ITEM MUST STAY HIDDEN" not in markdown
+    assert "2 / 2" in markdown
+    assert len(app.radio) == 1
+    assert tuple(app.radio[0].options) == (
+        "PILOT TWO OPTION 1",
+        "PILOT TWO OPTION 2",
+        "PILOT TWO OPTION 3",
+        "PILOT TWO OPTION 4",
     )
 
 

@@ -26,4 +26,3 @@ Tests must prove that:
 - A `HUMAN_REVIEWED` live item is not participant-visible.
 - With no pilot candidates, the existing five-item curated preview remains unchanged.
 - A project with neither pilot candidates nor curated items still reports `Preview unavailable`.
-

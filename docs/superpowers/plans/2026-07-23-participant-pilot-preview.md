@@ -84,4 +84,3 @@ Expected: exit code 0 with only the existing expected skip.
 git add psychometric_v2/ui/pages/participant.py tests/test_app_smoke.py
 git commit -m "fix: show pilot candidates in participant preview"
 ```
-

@@ -21,6 +21,13 @@ _DOMAIN_WHEEL_LABELS = {
     "negative_emotionality": "N",
     "open_mindedness": "O",
 }
+_DOMAIN_TEXT_COLORS = {
+    "extraversion": "#FFFFFF",
+    "agreeableness": "#0B0B0D",
+    "conscientiousness": "#0B0B0D",
+    "negative_emotionality": "#0B0B0D",
+    "open_mindedness": "#FFFFFF",
+}
 _FACET_WHEEL_LABELS = {
     "sociability": "Social",
     "assertiveness": "Assert",
@@ -202,7 +209,7 @@ def build_construct_wheel_svg(
                 "transform": f"translate({_n(x)} {_n(y)})",
                 "text-anchor": "middle",
                 "dominant-baseline": "middle",
-                "fill": "#FFFFFF",
+                "fill": _DOMAIN_TEXT_COLORS[domain_id],
                 "font-size": "22",
                 "font-weight": "700",
                 "letter-spacing": "0",
@@ -224,7 +231,7 @@ def build_construct_wheel_svg(
                 "transform": f"translate({_n(x)} {_n(y)}) rotate({rotation})",
                 "text-anchor": "start",
                 "dominant-baseline": "middle",
-                "fill": "#FFFFFF",
+                "fill": _DOMAIN_TEXT_COLORS[facets[facet_id].domain_id],
                 "font-size": "19",
                 "font-weight": "600",
                 "letter-spacing": "0",

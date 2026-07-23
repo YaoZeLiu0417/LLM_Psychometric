@@ -7,6 +7,7 @@ import streamlit as st
 from psychometric_v2.models import (
     CandidateItem,
     ConstructAnchor,
+    EvidenceStatus,
     GenerationMode,
     ResearchProject,
 )
@@ -18,6 +19,13 @@ def _e(value: object) -> str:
 
 
 def _preview_items(project: ResearchProject) -> tuple[CandidateItem, ...]:
+    pilot_items = tuple(
+        item
+        for item in project.items.values()
+        if item.evidence_status is EvidenceStatus.PILOT_CANDIDATE
+    )
+    if pilot_items:
+        return pilot_items
     return tuple(
         item
         for item in project.items.values()

@@ -450,6 +450,76 @@ def test_review_queue_and_participant_view_keep_roles_separate() -> None:
         assert hidden_term not in participant_text
 
 
+def test_participant_prefers_pilot_candidates_over_other_preview_items() -> None:
+    app = AppTest.from_string(
+        """
+from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.models import EvidenceStatus, GenerationMetadata, GenerationMode
+from psychometric_v2.ui.pages.participant import render
+from psychometric_v2.ui.state import init_state
+
+seed = build_demo_project()
+base = seed.items[seed.selected_item_id]
+curated_reference = base.validated_update(
+    stem_zh="CURATED REFERENCE ITEM MUST STAY HIDDEN",
+)
+human_reviewed = base.validated_update(
+    item_id="live-human-reviewed",
+    stem_zh="HUMAN REVIEWED ITEM MUST STAY HIDDEN",
+    generation_mode=GenerationMode.LIVE,
+    evidence_status=EvidenceStatus.HUMAN_REVIEWED,
+    model_id="fake-model",
+    generation_metadata=GenerationMetadata(
+        model_id="fake-model",
+        prompt_version=base.prompt_version,
+        constraint_snapshot={},
+    ),
+)
+pilot = base.validated_update(
+    item_id="live-pilot-candidate",
+    stem_zh="PILOT ITEM VISIBLE TO PARTICIPANTS",
+    options=tuple(
+        option.validated_update(text_zh=f"PILOT OPTION {option.display_order}")
+        for option in base.options
+    ),
+    generation_mode=GenerationMode.LIVE,
+    evidence_status=EvidenceStatus.PILOT_CANDIDATE,
+    model_id="fake-model",
+    generation_metadata=GenerationMetadata(
+        model_id="fake-model",
+        prompt_version=base.prompt_version,
+        constraint_snapshot={},
+    ),
+)
+project = seed.validated_update(
+    items={
+        **dict(seed.items),
+        curated_reference.item_id: curated_reference,
+        human_reviewed.item_id: human_reviewed,
+        pilot.item_id: pilot,
+    },
+    selected_item_id=pilot.item_id,
+)
+init_state()
+render(project, {}, None)
+        """
+    ).run()
+
+    assert not app.exception
+    markdown = _markdown(app)
+    assert "PILOT ITEM VISIBLE TO PARTICIPANTS" in markdown
+    assert "HUMAN REVIEWED ITEM MUST STAY HIDDEN" not in markdown
+    assert "CURATED REFERENCE ITEM MUST STAY HIDDEN" not in markdown
+    assert "1 / 1" in markdown
+    assert len(app.radio) == 1
+    assert tuple(app.radio[0].options) == (
+        "PILOT OPTION 1",
+        "PILOT OPTION 2",
+        "PILOT OPTION 3",
+        "PILOT OPTION 4",
+    )
+
+
 def test_participant_preview_collects_only_option_ids_across_five_items() -> None:
     project = build_demo_project()
     items = tuple(project.items.values())

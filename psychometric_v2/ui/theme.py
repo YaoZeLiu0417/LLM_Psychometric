@@ -327,6 +327,10 @@ def apply_theme() -> None:
             .trace-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
         }}
 
+        @media (max-width: 900px) {{
+            .source-row {{ grid-template-columns: 1fr; gap: 4px; }}
+        }}
+
         @media (max-width: 600px) {{
             [data-testid="stMainBlockContainer"] {{ padding: 0 .9rem 2rem; }}
             .top-shell {{ padding: 14px; }}
@@ -337,7 +341,6 @@ def apply_theme() -> None:
             .detail-grid {{ grid-template-columns: 1fr; }}
             .trace-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
             .stage-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-            .source-row {{ grid-template-columns: 1fr; gap: 4px; }}
             [data-testid="stPlotlyChart"] {{ min-height: 420px; }}
         }}
         </style>

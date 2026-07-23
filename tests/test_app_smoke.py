@@ -636,6 +636,17 @@ def test_status_palette_and_responsive_breakpoints_are_exposed() -> None:
     assert "@media (max-width: 600px)" in theme_markup
 
 
+def test_theme_stacks_source_rows_at_narrow_viewports() -> None:
+    app = _run_app("CONSTRUCT MAP")
+
+    assert not app.exception
+    theme_markup = app.markdown[0].value
+    narrow_source_rule = """@media (max-width: 900px) {
+    .source-row { grid-template-columns: 1fr; gap: 4px; }
+}"""
+    assert narrow_source_rule in theme_markup
+
+
 def test_theme_hides_streamlit_chrome_without_reserving_top_space() -> None:
     app = _run_app("PARTICIPANT VIEW")
 

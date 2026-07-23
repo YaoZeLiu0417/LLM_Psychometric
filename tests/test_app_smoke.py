@@ -198,14 +198,17 @@ def test_construct_map_renders_responsive_svg_wheel() -> None:
     app = _run_app("CONSTRUCT MAP")
 
     assert not app.exception
-    wheel_markup = next(
-        element.value
+    wheel_element = next(
+        element
         for element in app.markdown
-        if '<svg xmlns="http://www.w3.org/2000/svg" class="construct-wheel"' in element.value
+        if "construct-wheel" in element.value
     )
+    assert wheel_element.proto.allow_html is True
+    wheel_markup = wheel_element.value
     root = ET.fromstring(wheel_markup)
     namespace = {"svg": "http://www.w3.org/2000/svg"}
 
+    assert root.attrib["class"] == "construct-wheel"
     assert root.attrib["viewBox"] == "0 0 600 600"
     assert root.attrib["data-outer-radius"] == "292"
     assert root.attrib["data-domain-radius"] == "123"

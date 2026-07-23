@@ -107,6 +107,10 @@ def apply_theme() -> None:
             margin-top: 14px;
             padding-top: 10px;
         }}
+        .top-meta span {{
+            font-size: 13px;
+            font-weight: 650;
+        }}
         .status-badge {{
             display: inline-block;
             border-radius: 3px;

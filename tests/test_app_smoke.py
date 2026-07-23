@@ -150,9 +150,13 @@ def test_project_page_preserves_required_evidence_boundaries() -> None:
     ):
         assert expected in header
     for hidden_copy in (
+        "ACTIVE RESEARCH PROJECT",
         "Candidate item development - empirical validation required",
         "Candidate item development — empirical validation required",
         "CURATED DEMO",
+        "2023 EMPIRICAL STUDY -> 2026 RECONSTRUCTION -> "
+        "ADOLESCENT BEHAVIORAL PHENOTYPES",
+        "ARCHIVED 2023 EVIDENCE",
         "Openness item-total r",
         "Archived slide summary; raw participant data unavailable",
         "not evidence for V2",
@@ -219,11 +223,33 @@ def test_each_page_can_be_loaded_from_preset_session_state() -> None:
             assert expected in markdown, (page, expected)
 
 
-def test_non_project_header_omits_project_metadata() -> None:
-    app = _run_app("CONSTRUCT MAP")
+@pytest.mark.parametrize(
+    "page",
+    ("CONSTRUCT MAP", "GENERATION STUDIO", "REVIEW", "PARTICIPANT VIEW"),
+)
+def test_non_project_headers_omit_project_metadata(page: str) -> None:
+    app = _run_app(page)
 
     assert not app.exception
-    assert 'class="top-meta"' not in _header_markup(app)
+    header = _header_markup(app)
+    assert 'class="top-meta"' not in header
+    for metadata in (
+        "AGE 12-15",
+        "LOCALE zh-CN",
+        "Mainland Chinese junior-secondary students",
+    ):
+        assert metadata not in header
+
+
+def test_project_metadata_uses_compact_weighted_spans() -> None:
+    app = _run_app("PROJECT")
+
+    assert not app.exception
+    theme_markup = app.markdown[0].value
+    assert re.search(
+        r"\.top-meta span \{\s*font-size: 13px;\s*font-weight: 650;",
+        theme_markup,
+    )
 
 
 def test_construct_map_renders_responsive_svg_wheel() -> None:

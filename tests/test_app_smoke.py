@@ -230,7 +230,18 @@ def test_construct_map_wheel_uses_compact_labels_and_bilingual_hover() -> None:
     )
 
 
-def test_construct_map_source_markup_is_continuous_and_escaped() -> None:
+@pytest.mark.parametrize(
+    ("reverse", "expected_class", "expected_label"),
+    (
+        (True, "status-badge status-flag", "REVERSE KEYED"),
+        (False, "status-badge status-review", "FORWARD KEYED"),
+    ),
+)
+def test_construct_map_source_markup_is_continuous_and_escaped(
+    reverse: bool,
+    expected_class: str,
+    expected_label: str,
+) -> None:
     anchor = ConstructAnchor.model_construct(
         anchor_id="anchor-<unsafe>",
         item_number=1,
@@ -238,7 +249,7 @@ def test_construct_map_source_markup_is_continuous_and_escaped() -> None:
         legacy_feature="Sociability",
         domain_id="extraversion",
         facet_id="sociability",
-        reverse=True,
+        reverse=reverse,
     )
 
     markup = construct_map._source_list_markup((anchor,))
@@ -247,7 +258,7 @@ def test_construct_map_source_markup_is_continuous_and_escaped() -> None:
     assert markup.count('<div class="source-row">') == 1
     assert "anchor-&lt;unsafe&gt;" in markup
     assert "&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;" in markup
-    assert "REVERSE KEYED" in markup
+    assert f'<span class="{expected_class}">{expected_label}</span>' in markup
 
 
 def test_construct_map_renders_all_source_anchors_without_code_markup() -> None:

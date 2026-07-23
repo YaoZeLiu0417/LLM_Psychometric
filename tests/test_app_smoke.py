@@ -717,7 +717,7 @@ def test_research_download_projection_remains_a_five_item_demo() -> None:
     assert len(csv_rows) == 20
 
 
-def test_v2_launcher_and_readme_document_the_stable_demo_contract() -> None:
+def test_v2_launcher_and_readme_document_reference_and_live_access_contract() -> None:
     launcher = ROOT / "run_v2.ps1"
     readme = ROOT / "README_V2.md"
 
@@ -736,7 +736,13 @@ def test_v2_launcher_and_readme_document_the_stable_demo_contract() -> None:
         "OPENAI_API_KEY",
         "LLM_MODEL",
         "OPENAI_BASE_URL",
-        "CURATED DEMO",
+        "LIVE_ACCESS_CODE",
+        "Public reference items are available without model credentials or an "
+        "access code and are the stable presentation path.",
+        "Live generation requires both model configuration (`OPENAI_API_KEY` and "
+        "`LLM_MODEL`) and a session access-code unlock.",
+        "The unlock applies only to the current Streamlit session and does not "
+        "itself trigger a model call.",
         "2023 research lineage",
         "12-15",
         "scenario blueprint",
@@ -752,6 +758,7 @@ def test_v2_launcher_and_readme_document_the_stable_demo_contract() -> None:
         "individual personality inference",
     ):
         assert expected in documentation
+    assert "CURATED DEMO" not in documentation
 
 
 def test_status_palette_and_responsive_breakpoints_are_exposed() -> None:

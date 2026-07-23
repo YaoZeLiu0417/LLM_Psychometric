@@ -9,6 +9,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from psychometric_v2 import config as v2_config
+from psychometric_v2 import live_access
 from psychometric_v2.demo_seed import build_demo_project
 from psychometric_v2.models import (
     CandidateItem,
@@ -99,6 +100,58 @@ def _button(app: AppTest, label: str):
 
 def _widget_with_key(widgets, key: str):
     return next(widget for widget in widgets if widget.key == key)
+
+
+def _authorize_live_session(app: AppTest) -> None:
+    fingerprint = live_access.live_access_fingerprint()
+    assert fingerprint is not None
+    app.session_state["v2_live_unlocked"] = True
+    app.session_state["v2_live_access_fingerprint"] = fingerprint
+
+
+def _force_generate_event(monkeypatch) -> None:
+    real_button = generation.st.button
+
+    def forced_generate(label, *args, **kwargs):
+        if label == "GENERATE":
+            return True
+        return real_button(label, *args, **kwargs)
+
+    monkeypatch.setattr(generation.st, "button", forced_generate)
+
+
+def _seed_generation_display_state(
+    app: AppTest,
+    seed: CandidateItem,
+) -> dict[str, str]:
+    statuses = {
+        "CONSTRUCT SPECIFICATION": "CURATED",
+        "SCENARIO BLUEPRINT": "CURATED",
+        "RESPONSE OPTIONS": "CURATED",
+        "QUALITY CHECKS": "CURATED",
+    }
+    app.session_state["v2_generation_mode"] = GenerationMode.CURATED.value
+    app.session_state["v2_candidate_item"] = seed
+    app.session_state["v2_selected_item"] = seed.item_id
+    app.session_state["v2_construct_spec"] = seed.construct_spec
+    app.session_state["v2_scenario_blueprint"] = seed.scenario_blueprint
+    app.session_state["v2_generation_options"] = seed
+    app.session_state["v2_stage_status"] = statuses
+    return statuses
+
+
+def _assert_generation_display_state_unchanged(
+    app: AppTest,
+    seed: CandidateItem,
+    statuses: dict[str, str],
+) -> None:
+    assert app.session_state["v2_generation_mode"] == GenerationMode.CURATED.value
+    assert app.session_state["v2_candidate_item"] == seed
+    assert app.session_state["v2_selected_item"] == seed.item_id
+    assert app.session_state["v2_construct_spec"] == seed.construct_spec
+    assert app.session_state["v2_scenario_blueprint"] == seed.scenario_blueprint
+    assert app.session_state["v2_generation_options"] == seed
+    assert app.session_state["v2_stage_status"] == statuses
 
 
 def _install_successful_live_pipeline(monkeypatch, candidate) -> None:
@@ -964,6 +1017,11 @@ def test_reference_item_requires_exact_anchor_and_context_match() -> None:
     assert not app.exception
     assert _button(app, "LOAD REFERENCE ITEM").disabled is True
     assert seed.construct_spec.definition_zh not in _markdown(app)
+    assert any(
+        info.value
+        == "No reference item matches the selected domain, facet, anchor, and context."
+        for info in app.info
+    )
 
     _widget_with_key(app.selectbox, "v2_selected_anchor").set_value(
         "bfi2-sociability-01"
@@ -1008,6 +1066,7 @@ def test_live_generation_is_locked_by_default_with_complete_configuration(
     assert not app.exception
     assert app.session_state["v2_live_unlocked"] is False
     assert app.session_state["v2_live_access_error"] is None
+    assert app.session_state["v2_live_access_fingerprint"] is None
     assert _button(app, "GENERATE").disabled is True
     assert _button(app, "LOAD REFERENCE ITEM").disabled is False
     assert not any(widget.key == "v2_generation_mode" for widget in app.selectbox)
@@ -1044,6 +1103,7 @@ def test_wrong_live_access_code_is_rejected(monkeypatch) -> None:
 
     assert not app.exception
     assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_fingerprint"] is None
     assert app.session_state["v2_live_access_input"] == ""
     assert app.error[0].value == "Access code not recognized."
     assert _button(app, "GENERATE").disabled is True
@@ -1081,6 +1141,10 @@ def test_correct_live_access_code_unlocks_without_initializing_model(
     assert not app.exception
     assert calls == []
     assert app.session_state["v2_live_unlocked"] is True
+    assert (
+        app.session_state["v2_live_access_fingerprint"]
+        == live_access.live_access_fingerprint()
+    )
     assert app.session_state["v2_live_access_error"] is None
     assert app.session_state["v2_live_access_input"] == ""
     assert _button(app, "GENERATE").disabled is False
@@ -1103,9 +1167,12 @@ def test_absent_or_blank_live_access_configuration_fails_closed(
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_live_unlocked"] = True
+    app.session_state["v2_live_access_fingerprint"] = "stale-test-fingerprint"
     app.run()
 
     assert not app.exception
+    assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_fingerprint"] is None
     assert _button(app, "GENERATE").disabled is True
     assert not any(button.label == "UNLOCK" for button in app.button)
     assert not any(widget.key == "v2_live_access_input" for widget in app.text_input)
@@ -1119,18 +1186,12 @@ def test_forced_generate_event_cannot_bypass_live_access_lock(monkeypatch) -> No
     monkeypatch.setenv("LLM_MODEL", "test-only-model")
     monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
     calls: list[str] = []
-    real_button = generation.st.button
-
-    def forced_generate(label, *args, **kwargs):
-        if label == "GENERATE":
-            return True
-        return real_button(label, *args, **kwargs)
 
     def forbidden_config():
         calls.append("config")
         raise AssertionError("locked generation reached model configuration")
 
-    monkeypatch.setattr(generation.st, "button", forced_generate)
+    _force_generate_event(monkeypatch)
     monkeypatch.setattr(
         generation.LiveModelConfig,
         "from_env",
@@ -1142,6 +1203,120 @@ def test_forced_generate_event_cannot_bypass_live_access_lock(monkeypatch) -> No
     assert calls == []
     assert app.session_state["v2_generation_error"] == "Live generation is locked."
     assert app.error[0].value == "Live generation is locked."
+
+
+@pytest.mark.parametrize("replacement_code", (None, "   ", "test-only-access-b"))
+def test_access_configuration_change_invalidates_and_clears_session_grant(
+    monkeypatch,
+    replacement_code,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access-a")
+    app = _run_app("GENERATION STUDIO")
+    _widget_with_key(app.text_input, "v2_live_access_input").set_value(
+        "test-only-access-a"
+    )
+    _button(app, "UNLOCK").click().run()
+    stale_fingerprint = app.session_state["v2_live_access_fingerprint"]
+
+    assert stale_fingerprint == live_access.live_access_fingerprint()
+    assert _button(app, "GENERATE").disabled is False
+
+    if replacement_code is None:
+        monkeypatch.delenv("LIVE_ACCESS_CODE", raising=False)
+    else:
+        monkeypatch.setenv("LIVE_ACCESS_CODE", replacement_code)
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert _button(app, "GENERATE").disabled is True
+
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access-a")
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["v2_live_unlocked"] is False
+    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert _button(app, "GENERATE").disabled is True
+
+
+@pytest.mark.parametrize(
+    ("api_key", "model_id"),
+    (
+        (None, "test-only-model"),
+        ("   ", "test-only-model"),
+        ("test-only-api-key", None),
+        ("test-only-api-key", "   "),
+    ),
+)
+def test_forced_generate_with_missing_model_values_preserves_display_state(
+    monkeypatch,
+    api_key,
+    model_id,
+) -> None:
+    if api_key is None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    else:
+        monkeypatch.setenv("OPENAI_API_KEY", api_key)
+    if model_id is None:
+        monkeypatch.delenv("LLM_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("LLM_MODEL", model_id)
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
+    monkeypatch.delenv("LLM_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("OPENAI_TIMEOUT", raising=False)
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    client_calls: list[object] = []
+
+    def forbidden_client(config):
+        client_calls.append(config)
+        raise AssertionError("invalid configuration reached model client")
+
+    _force_generate_event(monkeypatch)
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", forbidden_client)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    _authorize_live_session(app)
+    statuses = _seed_generation_display_state(app, seed)
+
+    app.run()
+
+    assert not app.exception
+    assert client_calls == []
+    assert app.error[-1].value == "Live model configuration is unavailable."
+    _assert_generation_display_state_unchanged(app, seed, statuses)
+
+
+def test_forced_generate_with_invalid_timeout_preserves_display_state(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-api-key")
+    monkeypatch.setenv("LLM_MODEL", "test-only-model")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "0")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
+    seed = build_demo_project().items["demo-extraversion-sociability"]
+    client_calls: list[object] = []
+
+    def forbidden_client(config):
+        client_calls.append(config)
+        raise AssertionError("invalid configuration reached model client")
+
+    _force_generate_event(monkeypatch)
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", forbidden_client)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    _authorize_live_session(app)
+    statuses = _seed_generation_display_state(app, seed)
+
+    app.run()
+
+    assert not app.exception
+    assert client_calls == []
+    assert app.error[-1].value == "Live model configuration is unavailable."
+    _assert_generation_display_state_unchanged(app, seed, statuses)
 
 
 def test_reference_loading_while_locked_never_initializes_model(monkeypatch) -> None:
@@ -1206,7 +1381,7 @@ def test_live_success_commits_session_only_after_persistence(monkeypatch) -> Non
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
-    app.session_state["v2_live_unlocked"] = True
+    _authorize_live_session(app)
     app.session_state["v2_candidate_item"] = seed
     app.session_state["v2_selected_item"] = seed.item_id
     app.session_state["v2_stage_status"] = {
@@ -1262,7 +1437,7 @@ def test_live_persistence_failure_restores_session_and_is_public(
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
-    app.session_state["v2_live_unlocked"] = True
+    _authorize_live_session(app)
     app.session_state["v2_candidate_item"] = seed
     app.session_state["v2_selected_item"] = seed.item_id
     app.session_state["v2_stage_status"] = {
@@ -1394,7 +1569,7 @@ def test_construct_failure_does_not_reuse_previous_live_candidate(monkeypatch) -
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
-    app.session_state["v2_live_unlocked"] = True
+    _authorize_live_session(app)
     app.session_state["v2_active_stage"] = "RESPONSE OPTIONS"
     app.session_state["v2_construct_spec"] = old_live.construct_spec
     app.session_state["v2_scenario_blueprint"] = old_live.scenario_blueprint
@@ -1479,7 +1654,7 @@ def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch)
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
-    app.session_state["v2_live_unlocked"] = True
+    _authorize_live_session(app)
     app.run()
 
     assert not app.exception

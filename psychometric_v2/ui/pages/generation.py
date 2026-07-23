@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import hmac
 import html
 import os
 
 import streamlit as st
 
 from psychometric_v2.config import LiveModelConfig, ModelUnavailable
-from psychometric_v2.live_access import live_access_configured, verify_live_access_code
+from psychometric_v2.live_access import (
+    live_access_configured,
+    live_access_fingerprint,
+    verify_live_access_code,
+)
 from psychometric_v2.model_client import OpenAICompatibleClient
 from psychometric_v2.models import (
     CandidateItem,
@@ -41,19 +46,34 @@ def _live_environment_present() -> bool:
     )
 
 
+def _clear_live_access_grant() -> None:
+    st.session_state["v2_live_unlocked"] = False
+    st.session_state["v2_live_access_fingerprint"] = None
+
+
 def _live_access_granted() -> bool:
-    return live_access_configured() and bool(
-        st.session_state.get("v2_live_unlocked")
-    )
+    current_fingerprint = live_access_fingerprint()
+    stored_fingerprint = st.session_state.get("v2_live_access_fingerprint")
+    if (
+        current_fingerprint is None
+        or not st.session_state.get("v2_live_unlocked")
+        or not isinstance(stored_fingerprint, str)
+        or not hmac.compare_digest(stored_fingerprint, current_fingerprint)
+    ):
+        _clear_live_access_grant()
+        return False
+    return True
 
 
 def _submit_live_access_code() -> None:
     submitted = str(st.session_state.get("v2_live_access_input", ""))
-    if verify_live_access_code(submitted):
+    fingerprint = live_access_fingerprint()
+    if fingerprint is not None and verify_live_access_code(submitted):
         st.session_state["v2_live_unlocked"] = True
+        st.session_state["v2_live_access_fingerprint"] = fingerprint
         st.session_state["v2_live_access_error"] = None
     else:
-        st.session_state["v2_live_unlocked"] = False
+        _clear_live_access_grant()
         st.session_state["v2_live_access_error"] = "Access code not recognized."
     st.session_state["v2_live_access_input"] = ""
 
@@ -450,7 +470,7 @@ def render(
         st.info("Live generation requires OPENAI_API_KEY and LLM_MODEL configuration.")
     if curated is None:
         st.info(
-            "No curated example matches the selected domain, facet, anchor, and context."
+            "No reference item matches the selected domain, facet, anchor, and context."
         )
 
     if load_curated and curated is not None:
@@ -461,17 +481,17 @@ def render(
         if not _live_access_granted():
             st.session_state["v2_generation_error"] = "Live generation is locked."
         else:
-            mode = GenerationMode.LIVE.value
-            st.session_state["v2_generation_mode"] = mode
-            previous_candidate = st.session_state.get("v2_candidate_item")
-            previous_selected = st.session_state.get("v2_selected_item")
-            st.session_state["v2_candidate_item"] = None
-            st.session_state["v2_construct_spec"] = None
-            st.session_state["v2_scenario_blueprint"] = None
-            st.session_state["v2_generation_options"] = None
-            st.session_state["v2_generation_error"] = None
             try:
                 config = LiveModelConfig.from_env()
+                mode = GenerationMode.LIVE.value
+                st.session_state["v2_generation_mode"] = mode
+                previous_candidate = st.session_state.get("v2_candidate_item")
+                previous_selected = st.session_state.get("v2_selected_item")
+                st.session_state["v2_candidate_item"] = None
+                st.session_state["v2_construct_spec"] = None
+                st.session_state["v2_scenario_blueprint"] = None
+                st.session_state["v2_generation_options"] = None
+                st.session_state["v2_generation_error"] = None
                 client = OpenAICompatibleClient(config)
                 pipeline = GenerationPipeline(client)
                 generated = pipeline.generate_candidate(

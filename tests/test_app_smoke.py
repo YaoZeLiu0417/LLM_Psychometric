@@ -252,6 +252,48 @@ def test_project_metadata_uses_compact_weighted_spans() -> None:
     )
 
 
+def test_project_and_generation_evidence_notes_have_distinct_presentations() -> None:
+    project = _run_app("PROJECT")
+    generation = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    generation.session_state["v2_active_page"] = "GENERATION STUDIO"
+    generation.session_state["v2_active_stage"] = "QUALITY CHECKS"
+    generation.run()
+
+    assert not project.exception
+    assert not generation.exception
+    project_note = next(
+        element.value
+        for element in project.markdown
+        if "Historical summary from the 2023 college-student study" in element.value
+    )
+    generation_note = next(
+        element.value
+        for element in generation.markdown
+        if "Automated checks are advisory; human review is required." in element.value
+    )
+    assert 'class="project-evidence-footnote"' in project_note
+    assert 'class="evidence-note"' in generation_note
+
+    theme_markup = project.markdown[0].value
+    project_style = re.search(
+        r"\.project-evidence-footnote \{(?P<body>.*?)\}",
+        theme_markup,
+        re.DOTALL,
+    )
+    warning_style = re.search(
+        r"\.evidence-note \{(?P<body>.*?)\}",
+        theme_markup,
+        re.DOTALL,
+    )
+    assert project_style is not None
+    assert warning_style is not None
+    assert "color: var(--muted);" in project_style.group("body")
+    assert "font-size: 13px;" in project_style.group("body")
+    assert "margin-top: 10px;" in project_style.group("body")
+    assert "border-left: 4px solid var(--orange);" in warning_style.group("body")
+    assert "padding: 8px 12px;" in warning_style.group("body")
+
+
 def test_construct_map_renders_responsive_svg_wheel() -> None:
     app = _run_app("CONSTRUCT MAP")
 

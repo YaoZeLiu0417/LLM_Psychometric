@@ -191,10 +191,15 @@ def apply_theme() -> None:
             padding-bottom: 7px;
         }}
         .evidence-note {{
+            border-left: 4px solid var(--orange);
+            color: var(--text);
+            margin-top: 12px;
+            padding: 8px 12px;
+        }}
+        .project-evidence-footnote {{
             color: var(--muted);
             font-size: 13px;
-            line-height: 1.4;
-            margin-top: 12px;
+            margin-top: 10px;
         }}
         .unit-statement {{
             background: var(--ink);

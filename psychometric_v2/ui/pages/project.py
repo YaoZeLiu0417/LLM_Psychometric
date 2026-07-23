@@ -49,6 +49,6 @@ def render(
     archived = pd.DataFrame(_ARCHIVED_EVIDENCE, columns=("DOMAIN", "ALPHA", "OMEGA"))
     st.dataframe(archived, hide_index=True, use_container_width=True, height=214)
     st.markdown(
-        '<div class="evidence-note">Historical summary from the 2023 college-student study; raw response data are no longer available.</div>',
+        '<div class="project-evidence-footnote">Historical summary from the 2023 college-student study; raw response data are no longer available.</div>',
         unsafe_allow_html=True,
     )

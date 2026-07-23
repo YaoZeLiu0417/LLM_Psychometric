@@ -3,6 +3,7 @@ import io
 import json
 import re
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import pytest
 from streamlit.testing.v1 import AppTest
@@ -193,55 +194,23 @@ def test_each_page_can_be_loaded_from_preset_session_state() -> None:
             assert expected in markdown, (page, expected)
 
 
-def test_construct_map_wheel_uses_compact_labels_and_bilingual_hover() -> None:
-    trace = construct_map._taxonomy_figure().data[0]
+def test_construct_map_renders_responsive_svg_wheel() -> None:
+    app = _run_app("CONSTRUCT MAP")
 
-    assert tuple(trace.labels) == (
-        "E",
-        "A",
-        "C",
-        "N",
-        "O",
-        "Social",
-        "Assert",
-        "Energy",
-        "Compassion",
-        "Respect",
-        "Trust",
-        "Organized",
-        "Productive",
-        "Responsible",
-        "Anxiety",
-        "Depression",
-        "Volatility",
-        "Curiosity",
-        "Aesthetic",
-        "Creative",
+    assert not app.exception
+    wheel_markup = next(
+        element.value
+        for element in app.markdown
+        if '<svg xmlns="http://www.w3.org/2000/svg" class="construct-wheel"' in element.value
     )
-    assert tuple(trace.customdata[0]) == ("Extraversion", "外向性")
-    assert tuple(trace.customdata[8]) == ("Compassion", "同情")
-    assert tuple(trace.customdata[-1]) == (
-        "Creative Imagination",
-        "创造想象",
-    )
-    assert trace.textinfo == "label"
-    assert trace.hovertemplate == (
-        "<b>%{customdata[0]}</b><br>%{customdata[1]}<extra></extra>"
-    )
+    root = ET.fromstring(wheel_markup)
+    namespace = {"svg": "http://www.w3.org/2000/svg"}
 
-
-def test_construct_map_wheel_uses_approved_scale_and_orientation() -> None:
-    figure = construct_map._taxonomy_figure()
-    trace = figure.data[0]
-
-    assert trace.insidetextorientation == "auto"
-    assert figure.layout.height == 560
-    assert figure.layout.margin.to_plotly_json() == {
-        "l": 4,
-        "r": 4,
-        "t": 4,
-        "b": 4,
-    }
+    assert root.attrib["viewBox"] == "0 0 600 600"
+    assert root.attrib["data-outer-radius"] == "292"
+    assert root.attrib["data-domain-radius"] == "123"
+    assert len(root.findall("svg:path", namespace)) == 20
+    assert len(root.findall(".//svg:title", namespace)) == 20
 
 
 @pytest.mark.parametrize(

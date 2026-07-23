@@ -10,6 +10,16 @@
 
 ---
 
+## Post-Review Contract
+
+The implementation snippets below record the original TDD sequence, but three details were superseded by independent quality review and must not be replayed literally:
+
+- Segment text uses tested contrast-aware colors: white on Extraversion and Open-Mindedness, and `#0B0B0D` on Agreeableness, Conscientiousness, and Negative Emotionality.
+- The root SVG is an accessible `group` linked to `construct-wheel-description`; all twenty segment paths are independently named `img` roles, while the twenty duplicate short-label text nodes are `aria-hidden="true"`.
+- `tests/test_construct_wheel.py` contains five renderer tests after contrast, geometry, escaping, and assistive-technology review. The integrated full suite contains 252 collected tests: 251 passing and one skipped.
+
+Commits `72866b4` and `2af3c79` are the authoritative post-review corrections to the original Task 1 snippets.
+
 ## File Structure
 
 - Create `psychometric_v2/ui/construct_wheel.py`: own wheel constants, polar geometry, XML construction, short labels, fixed facet rotations, hover titles, and accessibility metadata.

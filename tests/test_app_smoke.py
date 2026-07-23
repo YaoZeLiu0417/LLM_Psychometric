@@ -27,11 +27,9 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / "app_v2.py"
 PAGES = {
     "PROJECT": (
-        "Candidate item development — empirical validation required",
-        "2023 EMPIRICAL STUDY -> 2026 RECONSTRUCTION -> ADOLESCENT BEHAVIORAL PHENOTYPES",
-        "ARCHIVED 2023 EVIDENCE",
-        "Openness item-total r: .455-.664",
-        "Archived slide summary; raw participant data unavailable; not evidence for V2.",
+        "2023 COLLEGE STUDENT STUDY -> 2026 ADOLESCENT RECONSTRUCTION -> FUTURE VALIDATION",
+        "2023 STUDY / COLLEGE STUDENT SAMPLE",
+        "Historical summary from the 2023 college-student study; raw response data are no longer available.",
     ),
     "CONSTRUCT MAP": (
         "CONSTRUCT TAXONOMY",
@@ -87,6 +85,14 @@ def _markdown(app: AppTest) -> str:
     return "\n".join(element.value for element in app.markdown)
 
 
+def _header_markup(app: AppTest) -> str:
+    return next(
+        element.value
+        for element in app.markdown
+        if '<header class="top-shell">' in element.value
+    )
+
+
 def _button(app: AppTest, label: str):
     return next(button for button in app.button if button.label == label)
 
@@ -122,7 +128,8 @@ def test_app_starts_without_live_model_configuration(monkeypatch) -> None:
     assert not app.exception
     markdown = _markdown(app)
     assert "Adolescent Big Five" in markdown
-    assert "CURATED DEMO" in markdown
+    for hidden_badge in ("CURATED DEMO", "LIVE AVAILABLE", "LIVE UNAVAILABLE"):
+        assert hidden_badge not in markdown
 
 
 def test_project_page_preserves_required_evidence_boundaries() -> None:
@@ -132,7 +139,25 @@ def test_project_page_preserves_required_evidence_boundaries() -> None:
     markdown = _markdown(app)
     for expected in PAGES["PROJECT"]:
         assert expected in markdown
-    assert "VALIDATED" not in markdown
+    header = _header_markup(app)
+    assert markdown.count('<header class="top-shell">') == 1
+    assert markdown.count(build_demo_project().config.title) == 1
+    assert "project-band" not in markdown
+    for expected in (
+        "AGE 12-15",
+        "LOCALE zh-CN",
+        "Mainland Chinese junior-secondary students",
+    ):
+        assert expected in header
+    for hidden_copy in (
+        "Candidate item development - empirical validation required",
+        "Candidate item development — empirical validation required",
+        "CURATED DEMO",
+        "Openness item-total r",
+        "Archived slide summary; raw participant data unavailable",
+        "not evidence for V2",
+    ):
+        assert hidden_copy not in markdown
     assert "sample size" not in markdown.lower()
 
     metrics = {(metric.label, str(metric.value)) for metric in app.metric}
@@ -140,7 +165,7 @@ def test_project_page_preserves_required_evidence_boundaries() -> None:
         ("SOURCE ANCHORS", "60"),
         ("FACETS", "15"),
         ("DOMAINS", "5"),
-        ("CURATED CANDIDATES", "5"),
+        ("REFERENCE ITEMS", "5"),
         ("VALIDATED ITEMS", "0"),
     }
 
@@ -178,7 +203,7 @@ render(expanded, load_anchor_asset(ANCHOR_ASSET), None)
     metric = next(
         metric
         for metric in app.metric
-        if metric.label == "CURATED CANDIDATES"
+        if metric.label == "REFERENCE ITEMS"
     )
     assert str(metric.value) == "5"
 
@@ -192,6 +217,13 @@ def test_each_page_can_be_loaded_from_preset_session_state() -> None:
         assert app.session_state["v2_active_page"] == page
         for expected in expected_content:
             assert expected in markdown, (page, expected)
+
+
+def test_non_project_header_omits_project_metadata() -> None:
+    app = _run_app("CONSTRUCT MAP")
+
+    assert not app.exception
+    assert 'class="top-meta"' not in _header_markup(app)
 
 
 def test_construct_map_renders_responsive_svg_wheel() -> None:
@@ -362,7 +394,7 @@ def test_participant_preview_never_renders_research_metadata() -> None:
         assert hidden_term not in rendered
 
 
-def test_participant_header_stays_curated_when_selected_item_is_live() -> None:
+def test_participant_header_hides_selected_item_generation_mode() -> None:
     app = AppTest.from_string(
         """
 import streamlit as st
@@ -393,15 +425,16 @@ project = seed.validated_update(
 init_state()
 st.session_state["v2_active_page"] = "PARTICIPANT VIEW"
 st.session_state["v2_selected_item"] = live.item_id
-render_header(project, live_available=True)
+render_header(project)
 render(project, {}, None)
         """
     ).run()
 
     assert not app.exception
     markdown = _markdown(app)
-    assert '<span class="mode-badge">CURATED DEMO</span>' in markdown
-    assert '<span class="mode-badge">LIVE GENERATION</span>' not in markdown
+    header = _header_markup(app)
+    assert "CURATED DEMO" not in header
+    assert "LIVE GENERATION" not in header
     assert "LIVE STEM MUST NOT BE SHOWN" not in markdown
     assert "新学期社团第一次活动" in markdown
 
@@ -1218,8 +1251,8 @@ def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch)
     _button(app, "LOAD CURATED EXAMPLE").click().run()
     assert not app.exception
     assert app.session_state["v2_generation_mode"] == "CURATED DEMO"
-    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
-    assert '<span class="mode-badge">LIVE GENERATION</span>' not in _markdown(app)
+    assert "CURATED DEMO" not in _header_markup(app)
+    assert "LIVE GENERATION" not in _header_markup(app)
     assert app.session_state["v2_candidate_item"].generation_mode is GenerationMode.CURATED
     assert app.session_state["v2_candidate_item"].item_id == (
         "demo-extraversion-sociability"
@@ -1658,7 +1691,7 @@ render(project, load_anchor_asset(ANCHOR_ASSET), WorkbenchService(repository))
     assert after_conflict.review_versions[0].note == "external save"
 
 
-def test_review_selection_updates_header_mode_in_the_same_rerun() -> None:
+def test_review_header_never_exposes_selected_item_generation_mode() -> None:
     app = AppTest.from_string(
         """
 import streamlit as st
@@ -1688,31 +1721,32 @@ project = seed.validated_update(
 init_state()
 st.session_state["v2_active_page"] = "REVIEW"
 sync_selected_item_from_review(project)
-render_header(project, live_available=True)
+render_header(project)
 render(project, {}, None)
         """,
         default_timeout=10,
     ).run()
 
     assert not app.exception
-    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
+    assert "CURATED DEMO" not in _header_markup(app)
+    assert "LIVE GENERATION" not in _header_markup(app)
     _widget_with_key(app.selectbox, "v2_review_item").set_value(
         "live-review-selection"
     ).run()
 
     assert not app.exception
-    assert '<span class="mode-badge">LIVE GENERATION</span>' in _markdown(app)
-    assert '<span class="mode-badge">CURATED DEMO</span>' not in _markdown(app)
+    assert "CURATED DEMO" not in _header_markup(app)
+    assert "LIVE GENERATION" not in _header_markup(app)
 
     _widget_with_key(app.selectbox, "v2_review_item").set_value(
         "demo-extraversion-sociability"
     ).run()
     assert not app.exception
-    assert '<span class="mode-badge">CURATED DEMO</span>' in _markdown(app)
-    assert '<span class="mode-badge">LIVE GENERATION</span>' not in _markdown(app)
+    assert "CURATED DEMO" not in _header_markup(app)
+    assert "LIVE GENERATION" not in _header_markup(app)
 
 
-def test_review_header_uses_selected_live_item_generation_mode() -> None:
+def test_header_never_exposes_live_generation_mode() -> None:
     app = AppTest.from_string(
         """
 import streamlit as st
@@ -1738,11 +1772,11 @@ live_project = project.validated_update(
     selected_item_id=live_item.item_id,
 )
 st.session_state["v2_active_page"] = "REVIEW"
-render_header(live_project, live_available=True)
+render_header(live_project)
         """
     ).run()
 
     assert not app.exception
-    markdown = _markdown(app)
-    assert '<span class="mode-badge">LIVE GENERATION</span>' in markdown
-    assert '<span class="mode-badge">CURATED DEMO</span>' not in markdown
+    header = _header_markup(app)
+    assert "LIVE GENERATION" not in header
+    assert "CURATED DEMO" not in header

@@ -49,31 +49,23 @@ def _effective_page() -> str:
     return str(active_page) if active_page in PAGES else PAGES[0]
 
 
-def _effective_mode(project: ResearchProject, page: str) -> str:
-    if page == "GENERATION STUDIO":
-        return str(st.session_state.get("v2_generation_mode", "CURATED DEMO"))
-    if page == "REVIEW":
-        return selected_item(project).generation_mode.value
-    return "CURATED DEMO"
-
-
-def render_header(project: ResearchProject, *, live_available: bool) -> None:
-    mode = _e(_effective_mode(project, _effective_page()))
-    availability = "LIVE AVAILABLE" if live_available else "LIVE UNAVAILABLE"
+def render_header(project: ResearchProject) -> None:
+    project_metadata = ""
+    if _effective_page() == "PROJECT":
+        project_metadata = f"""
+          <div class="top-meta">
+            <span>AGE {_e(project.config.age_min)}-{_e(project.config.age_max)}</span>
+            <span>LOCALE {_e(project.config.locale)}</span>
+            <span>{_e(project.config.population)}</span>
+          </div>
+        """
     st.markdown(
         f"""
         <header class="top-shell">
           <div class="top-eyebrow">PSYCHOMETRIC RESEARCH WORKBENCH</div>
-          <div class="top-row">
-            <div>
-              <div class="top-title">Adolescent Big Five</div>
-              <div class="top-subtitle">{_e(project.config.title)}</div>
-            </div>
-            <div class="top-badges">
-              <span class="mode-badge">{mode}</span>
-              <span class="availability-badge">{_e(availability)}</span>
-            </div>
-          </div>
+          <div class="top-title">Adolescent Big Five</div>
+          <div class="top-subtitle">{_e(project.config.title)}</div>
+          {project_metadata}
         </header>
         """,
         unsafe_allow_html=True,

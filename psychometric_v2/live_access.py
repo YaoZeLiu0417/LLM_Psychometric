@@ -15,4 +15,6 @@ def live_access_configured() -> bool:
 def verify_live_access_code(submitted: str) -> bool:
     configured = _configured_code()
     candidate = submitted.strip()
-    return bool(configured) and hmac.compare_digest(candidate, configured)
+    return bool(configured) and hmac.compare_digest(
+        candidate.encode("utf-8"), configured.encode("utf-8")
+    )

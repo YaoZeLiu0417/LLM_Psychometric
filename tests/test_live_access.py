@@ -22,3 +22,28 @@ def test_live_access_accepts_exact_configured_code(monkeypatch) -> None:
     monkeypatch.setenv("LIVE_ACCESS_CODE", "job-talk-2026")
 
     assert verify_live_access_code("job-talk-2026") is True
+
+
+def test_live_access_accepts_exact_unicode_configured_code(monkeypatch) -> None:
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "mi-ma-2026-密码")
+
+    assert verify_live_access_code("mi-ma-2026-密码") is True
+
+
+def test_live_access_rejects_wrong_unicode_configured_code(monkeypatch) -> None:
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "mi-ma-2026-密码")
+
+    assert verify_live_access_code("mi-ma-2027-密码") is False
+
+
+def test_live_access_rejects_whitespace_only_configured_code(monkeypatch) -> None:
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "   ")
+
+    assert live_access_configured() is False
+    assert verify_live_access_code("anything") is False
+
+
+def test_live_access_trims_configured_and_submitted_codes(monkeypatch) -> None:
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "  job-talk-2026  ")
+
+    assert verify_live_access_code("  job-talk-2026  ") is True

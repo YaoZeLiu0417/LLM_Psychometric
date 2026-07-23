@@ -69,15 +69,15 @@ def _taxonomy_figure() -> go.Figure:
             marker={"colors": colors, "line": {"color": "#F7F7F5", "width": 2}},
             customdata=customdata,
             hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]}<extra></extra>",
-            insidetextorientation="radial",
+            insidetextorientation="auto",
             textinfo="label",
             sort=False,
         )
     )
     figure.update_layout(
         autosize=True,
-        height=520,
-        margin={"l": 8, "r": 8, "t": 8, "b": 8},
+        height=560,
+        margin={"l": 4, "r": 4, "t": 4, "b": 4},
         paper_bgcolor="#F7F7F5",
         plot_bgcolor="#F7F7F5",
         font={"family": "Source Sans 3", "color": "#0B0B0D", "size": 14},

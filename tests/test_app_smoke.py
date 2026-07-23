@@ -230,6 +230,20 @@ def test_construct_map_wheel_uses_compact_labels_and_bilingual_hover() -> None:
     )
 
 
+def test_construct_map_wheel_uses_approved_scale_and_orientation() -> None:
+    figure = construct_map._taxonomy_figure()
+    trace = figure.data[0]
+
+    assert trace.insidetextorientation == "auto"
+    assert figure.layout.height == 560
+    assert figure.layout.margin.to_plotly_json() == {
+        "l": 4,
+        "r": 4,
+        "t": 4,
+        "b": 4,
+    }
+
+
 @pytest.mark.parametrize(
     ("reverse", "expected_class", "expected_label"),
     (

@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
@@ -5,6 +6,18 @@ from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_APP_PATH = ROOT / "public_app.py"
+
+
+def test_public_entry_avoids_process_global_runpy_execution() -> None:
+    tree = ast.parse(PUBLIC_APP_PATH.read_text(encoding="utf-8"))
+    imported_modules = {
+        node.module if isinstance(node, ast.ImportFrom) else alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    }
+
+    assert "runpy" not in imported_modules
 
 
 def test_public_entry_renders_project_page_on_rerun(monkeypatch) -> None:

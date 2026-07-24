@@ -426,11 +426,18 @@ Expected: HTTP 200 with body `ok`.
 
 - [ ] **Step 4: Capture four screenshots from the same browser tab and viewport**
 
-Use the Codex in-app browser with `http://localhost:8503`. Keep its default desktop viewport unchanged for every capture. Use one tab, wait for Streamlit to finish rendering after each navigation, and save `tab.screenshot({fullPage:false})` bytes with `node:fs/promises`:
+Use the Codex in-app browser with `http://localhost:8503`. Keep its default desktop viewport unchanged for every capture. Use one tab and wait for Streamlit to finish rendering after each navigation. Resolve the active checkout root with `git rev-parse --show-toplevel`, substitute that result for `<active-checkout-root>` below, and save `tab.screenshot({fullPage:false})` bytes with `node:fs/promises`:
 
 ```javascript
 globalThis.readmeFs = await import("node:fs/promises");
-globalThis.readmeAssetRoot = "D:/LLM_Psychometric/docs/assets/readme";
+globalThis.readmePath = await import("node:path");
+globalThis.readmeRepoRoot = "<active-checkout-root>";
+globalThis.readmeAssetRoot = readmePath.join(
+  readmeRepoRoot,
+  "docs",
+  "assets",
+  "readme"
+);
 await readmeFs.mkdir(readmeAssetRoot, { recursive: true });
 
 await readmeFs.writeFile(

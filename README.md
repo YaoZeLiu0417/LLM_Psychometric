@@ -91,7 +91,7 @@ Participant View removes construct labels, hidden scores, rationales, and person
 | Workflow | Services that coordinate generation, checking, review transitions, and reference downloads |
 | Records | Pydantic records for structured candidates, anchor links, evidence state, and history |
 | Storage | Local JSON repository at `workspace_data/v2/projects/` with atomic file replacement |
-| Model integration | OpenAI-compatible adapter with one repair attempt for invalid structured output |
+| Model integration | OpenAI-compatible adapter with one repair attempt for schema-invalid JSON objects |
 | Review downloads | JSON and CSV projections containing reference items only, not live-generated candidates, even after review or promotion |
 
 For a concise implementation inventory and module map, see [README_V2.md](README_V2.md). Run the repository test suite with:

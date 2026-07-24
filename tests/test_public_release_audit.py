@@ -42,6 +42,12 @@ def test_scan_content_skips_binary_and_oversized_payloads() -> None:
     assert scan_content("large.txt", b"x" * (5 * 1024 * 1024 + 1)) == ()
 
 
+def test_scanner_source_does_not_match_its_pattern_literals() -> None:
+    source = Path("scripts/audit_public_release.py").read_bytes()
+
+    assert scan_content("scripts/audit_public_release.py", source) == ()
+
+
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     environment = {
         **os.environ,

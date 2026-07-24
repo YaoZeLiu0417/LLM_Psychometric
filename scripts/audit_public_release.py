@@ -20,8 +20,8 @@ _SECRET_ASSIGNMENT = re.compile(
 )
 _PERSONAL_PATH_PATTERNS = (
     re.compile(rb"(?i)\b[A-Z]:\\Users\\[^\\\r\n]+"),
-    re.compile(rb"(?i)/Users/[^/\s]+"),
-    re.compile(rb"(?i)/home/[^/\s]+"),
+    re.compile(rb"(?i)/" + rb"Users/[^/\s]+"),
+    re.compile(rb"(?i)/" + rb"home/[^/\s]+"),
 )
 _PLACEHOLDER_MARKERS = (
     "<",

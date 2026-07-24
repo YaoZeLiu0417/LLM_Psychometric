@@ -95,7 +95,13 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
         "http://localhost:8501",
         "Streamlit Community Cloud",
         "ephemeral",
+        "reference items only",
+        "cannot back up live-generated candidates",
+        "workspace_data/v2/projects/",
+        "model identifier, prompt version, and constraint snapshot",
+        "Workflow / Human Review",
         "does not consume model tokens",
+        "普通浏览不会调用模型，也不会消耗模型 token（does not consume model tokens）。",
         "README_V2.md",
     ):
         assert expected in documentation
@@ -104,6 +110,14 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
     assert "curated demo" not in lowered
     assert "live available" not in lowered
     assert "408 participants" not in lowered
+
+    for inaccurate_claim in (
+        'G --> I["JSON / CSV export"]',
+        "preserves the model, prompt, and constraints",
+        "source provenance",
+        "Evidence / Human Reviewed",
+    ):
+        assert inaccurate_claim not in documentation
 ```
 
 - [ ] **Step 2: Run the contract to verify it fails**
@@ -132,18 +146,18 @@ Create `README.md` with this content. Image references intentionally precede the
 ![Python](https://img.shields.io/badge/Python-Research%20Workflow-0B0B0D?style=flat-square)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Workbench-D81B78?style=flat-square)
 ![BFI-2](https://img.shields.io/badge/BFI--2-Construct%20Map-40358C?style=flat-square)
-![Human Review](https://img.shields.io/badge/Evidence-Human%20Reviewed-24A8D8?style=flat-square)
+![Workflow / Human Review](https://img.shields.io/badge/Workflow-Human%20Review-24A8D8?style=flat-square)
 
 | **5 domains** | **15 facets** | **60 traceable anchors** |
 |:---:|:---:|:---:|
-| Big Five structure | Facet-level generation | Source-linked provenance |
+| Big Five structure | Facet-level generation | Anchor-linked traceability |
 
 </div>
 
 > [!IMPORTANT]
 > This workbench develops research candidates. It is **not a validated assessment**, diagnostic instrument, or personality-reporting service. Candidate items require expert review, pilot testing, and empirical psychometric validation before research use.
 
-![Construct Map panorama showing five Big Five domains, 15 facets, and source-linked construct details](docs/assets/readme/construct-map.png)
+![Construct Map panorama showing five Big Five domains, 15 facets, and anchor-linked construct details](docs/assets/readme/construct-map.png)
 
 ## Research proposition
 
@@ -153,7 +167,7 @@ Each candidate preserves a chain from the source anchor and facet definition thr
 
 ## From 2023 to the Current Workbench
 
-The project began as a 2023 master's research system focused on college students. The current reconstruction changes the target population to mainland Chinese adolescents aged 12-15 and rebuilds the earlier idea as a clearer authoring, provenance, review, preview, and export workflow.
+The project began as a 2023 master's research system focused on college students. The current reconstruction changes the target population to mainland Chinese adolescents aged 12-15 and rebuilds the earlier idea as a clearer authoring, anchor-linked traceability, review, and preview workflow, alongside reference-only downloads.
 
 The earlier project establishes research lineage, not evidence that this version is superior or validated. Historical results and sample sizes are not restated without the original data record.
 
@@ -168,28 +182,27 @@ flowchart LR
     E --> F["Human Review"]
     F --> G["PILOT_CANDIDATE"]
     G --> H["Participant View"]
-    G --> I["JSON / CSV export"]
 ```
 
-The facet is the generation unit. Source direction, observable behavioral indicators, exclusions, possible confounds, scenario constraints, hidden option scores, concise rationales, checks, and human edits remain available for inspection.
+The facet is the generation unit. Source direction, observable behavioral indicators, exclusions, possible confounds, scenario constraints, hidden option scores, concise rationales, checks, and human edits remain available for inspection. Review downloads are separate and contain reference items only; they are not an output of the pilot-candidate flow.
 
 ## Workbench tour
 
 ### 1. Construct Map
 
-Navigate five domains, 15 facets, and 60 source anchors. Inspect construct definitions, behavioral indicators, exclusions, confounds, and forward/reverse-key provenance before generating content.
+Navigate five domains, 15 facets, and 60 source anchors. Inspect construct definitions, behavioral indicators, exclusions, confounds, internal source identifiers, anchor identifiers, and forward/reverse direction before generating content.
 
 ### 2. Generation Studio
 
 ![Generation Studio showing construct specification, scenario blueprint, response-option design, and quality checks](docs/assets/readme/generation-studio.png)
 
-Generation is staged into a construct specification, adolescent scenario blueprint, four observable behavioral options, and quality checks. Live output uses schema-constrained JSON and retains the active model, prompt version, and constraint snapshot.
+Generation is staged into a construct specification, adolescent scenario blueprint, four observable behavioral options, and quality checks. Live output uses schema-constrained JSON and stores the model identifier, prompt version, and constraint snapshot, not the full rendered prompt.
 
 ### 3. Human Review
 
-![Review workbench showing the Chinese content editor, evidence status, provenance, and version history](docs/assets/readme/review-workbench.png)
+![Review workbench showing the Chinese content editor, evidence status, anchor-linked traceability, and version history](docs/assets/readme/review-workbench.png)
 
-Researchers can edit Chinese stems and options, record reviewer identity and notes, inspect provenance and quality evidence, and preserve every decision as a review version. Content approval and pilot promotion are deliberately separate actions.
+Researchers can edit Chinese stems and options, record reviewer identity and notes, inspect anchor links and quality evidence, and preserve every decision as a review version. Content approval and pilot promotion are deliberately separate actions.
 
 ### 4. Participant View
 
@@ -201,7 +214,7 @@ Participant View removes construct labels, scoring keys, quality metadata, and p
 
 ### 1. 在线查看参考内容
 
-打开[在线工作台](https://adolescent-big-five-workbench.streamlit.app/)。无需模型密钥即可查看 PROJECT、CONSTRUCT MAP、已有参考题目、审核信息和 PARTICIPANT VIEW。普通浏览不会调用模型，**does not consume model tokens**。
+打开[在线工作台](https://adolescent-big-five-workbench.streamlit.app/)。无需模型密钥即可查看 PROJECT、CONSTRUCT MAP、已有参考题目、审核信息和 PARTICIPANT VIEW。普通浏览不会调用模型，也不会消耗模型 token（does not consume model tokens）。
 
 ### 2. 使用模型生成候选题目
 
@@ -219,6 +232,8 @@ Participant View removes construct labels, scoring keys, quality metadata, and p
 4. 再点击 `PROMOTE TO PILOT`，将其转为 `PILOT_CANDIDATE`。
 
 两个动作分离是为了避免“内容看起来可用”被误解为“已经具备测量学证据”。
+
+当前 Review 下载仅包含参考题目，不能备份实时生成、已审核或已推进的候选题目。
 
 ### 4. 在 Participant View 中查看
 
@@ -248,18 +263,18 @@ LIVE_ACCESS_CODE=
 powershell -ExecutionPolicy Bypass -File .\run_v2.ps1
 ```
 
-打开 `http://localhost:8501`。一次工作区只运行一个 Streamlit 服务进程；密钥和访问口令不得提交到 Git。
+打开 `http://localhost:8501`。一次工作区只运行一个 Streamlit 服务进程。需要持久保存研究工作时，请使用本地部署，并在外部备份 `workspace_data/v2/projects/`；密钥和访问口令不得提交到 Git。
 
 ## Technical foundation
 
 | Layer | Responsibility |
 |---|---|
-| Streamlit views | Research navigation, authoring, review, preview, and export |
+| Streamlit views | Research navigation, authoring, review, preview, and reference downloads |
 | Workflow services | Generation stages, status transitions, version conflict checks |
 | Pydantic records | Typed constructs, scenarios, options, checks, and review history |
-| JSON repository | Versioned local project state with atomic file replacement |
+| JSON repository | Local project state at `workspace_data/v2/projects/` with atomic file replacement |
 | Model adapter | OpenAI-compatible structured generation with one repair attempt |
-| Research exports | Complete JSON provenance and flattened CSV item/option records |
+| Review downloads | JSON and CSV projections containing reference items only, not live-generated, reviewed, or promoted candidates |
 
 Detailed runtime notes remain in [README_V2.md](README_V2.md). Run the repository checks with:
 
@@ -271,7 +286,8 @@ python -m pytest
 
 - Live generation requires configured model credentials and a valid session access code.
 - Streamlit Community Cloud storage is **ephemeral**. Generated and reviewed items may disappear after a restart or redeployment.
-- Download JSON or CSV exports when candidate work needs to be retained.
+- Current Review downloads contain reference items only and cannot back up live-generated candidates, including reviewed or promoted candidates.
+- Durable research work should use a local deployment and an external backup of `workspace_data/v2/projects/`; current cloud download buttons are not a generated-candidate backup.
 - Missing model configuration affects generation only; the reference research path remains available.
 - Model output, automated checks, and human review do not replace pilot testing, reliability or validity evidence, or measurement-invariance analysis.
 - Do not use this system for diagnosis, high-stakes decisions, or individual personality inference.
@@ -400,7 +416,7 @@ View all four PNG files. Confirm:
 - the full workbench content is visible and nonblank;
 - Construct Map labels are legible and inside the wheel;
 - Generation Studio shows seeded/reference content without a spinner or error;
-- Review shows the editor, evidence status, and provenance region;
+- Review shows the editor, evidence status, and anchor-linked traceability region;
 - Participant View shows Chinese item content without trait labels or scores;
 - no access code, API key, environment value, local path, browser account, or notification appears;
 - all files have exactly the same pixel dimensions.
@@ -448,9 +464,11 @@ Run:
 git diff --check master...HEAD
 git diff --name-only master...HEAD
 rg -n "sk-[A-Za-z0-9]|LIVE_ACCESS_CODE=.+|OPENAI_API_KEY=.+|curated demo|live available|408 participants" README.md docs/assets/readme tests/test_readme.py
+rg -n "reference items only|cannot back up live-generated candidates|workspace_data/v2/projects/|model identifier, prompt version, and constraint snapshot|Workflow / Human Review" README.md tests/test_readme.py
+rg -n "G --> I|preserves the model, prompt, and constraints|source provenance|Evidence / Human Reviewed|exports for inspection and retention" README.md
 ```
 
-Expected: no whitespace errors, exactly the planned documentation/test files plus approved spec/plan changes, and no credential or prohibited-copy match. Matches inside the test's explicit forbidden-string assertions are acceptable only for `curated demo`, `live available`, and `408 participants`.
+Expected: no whitespace errors, exactly the planned documentation/test files plus approved spec/plan changes, no credential or prohibited-copy match, every durable-boundary phrase present, and no inaccurate export, prompt, source, or badge wording in the README. Matches inside explicit forbidden-string assertions are acceptable in `tests/test_readme.py`.
 
 - [ ] **Step 2: Run focused and complete verification**
 

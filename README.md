@@ -14,7 +14,7 @@
   <img alt="Python / Research Workflow" src="https://img.shields.io/badge/Python-Research%20Workflow-0B0B0D?style=flat-square&amp;logo=python&amp;logoColor=white">
   <img alt="Streamlit / Workbench" src="https://img.shields.io/badge/Streamlit-Workbench-D81B78?style=flat-square&amp;logo=streamlit&amp;logoColor=white">
   <img alt="BFI-2 / Construct Map" src="https://img.shields.io/badge/BFI--2-Construct%20Map-40358C?style=flat-square">
-  <img alt="Evidence / Human Reviewed" src="https://img.shields.io/badge/Evidence-Human%20Reviewed-24A8D8?style=flat-square">
+  <img alt="Workflow / Human Review" src="https://img.shields.io/badge/Workflow-Human%20Review-24A8D8?style=flat-square">
 </p>
 
 <table align="center">
@@ -30,7 +30,7 @@
 > [!IMPORTANT]
 > This workbench develops research candidates. It is **not a validated assessment**, diagnostic instrument, or personality-reporting service. Expert review, pilot testing, and empirical psychometric validation are required before research use.
 
-![Construct Map showing Big Five domains, facets, source anchors, direction, and provenance](docs/assets/readme/construct-map.png)
+![Construct Map showing Big Five domains, facets, source identifiers, direction, and anchor-linked traceability](docs/assets/readme/construct-map.png)
 
 ## Research proposition
 
@@ -40,7 +40,7 @@ The system makes item development an inspectable, staged workflow rather than a 
 
 ## From 2023 to the Current Workbench
 
-The 2023 master's system focused on college students. The current reconstruction targets mainland Chinese adolescents aged 12-15 and rebuilds the authoring, provenance, review, preview, and export workflow around that population and research setting.
+The 2023 master's system focused on college students. The current reconstruction targets mainland Chinese adolescents aged 12-15 and rebuilds the authoring, anchor-linked traceability, review, and preview workflow around that population and research setting, alongside reference-only downloads.
 
 This lineage describes the project's development history. It is not evidence that the current V2 workbench is superior to the earlier system, nor that its items or workflow are validated. No unverified historical sample sizes are claimed here.
 
@@ -55,22 +55,21 @@ flowchart LR
     E --> F["Human Review"]
     F --> G["PILOT_CANDIDATE"]
     G --> H["Participant View"]
-    G --> I["JSON / CSV export"]
 ```
 
-The facet is the generation unit. For each candidate, the workflow keeps the source direction, target behaviors, exclusions, likely confounds, scenario constraints, four response options, hidden scores, rationales, automated checks, and researcher edits available for inspection. This makes the path from source anchor to pilot candidate auditable without treating generated text as measurement evidence.
+The facet is the generation unit. For each candidate, the workflow keeps the source direction, target behaviors, exclusions, likely confounds, scenario constraints, four response options, hidden scores, rationales, automated checks, and researcher edits available for inspection. This makes the path from source anchor to pilot candidate inspectable without treating generated text as measurement evidence. Review downloads are a separate, reference-only projection rather than an output of the pilot-candidate flow.
 
 ## Workbench tour
 
 ### 1. Construct Map
 
-The Construct Map organizes five Big Five domains into 15 facets and connects them to 60 anchors. Each anchor retains its wording, scoring direction, domain and facet assignment, and source provenance so a researcher can inspect what a generation request is intended to represent.
+The Construct Map organizes five Big Five domains into 15 facets and connects them to 60 anchors. Each anchor retains its wording, scoring direction, domain and facet assignment, source identifier, and anchor identifier so a researcher can inspect what a generation request is intended to represent.
 
 ### 2. Generation Studio
 
 ![Generation Studio showing the construct specification, scenario blueprint, response options, and quality checks](docs/assets/readme/generation-studio.png)
 
-Generation Studio turns one selected facet into a structured authoring request. It presents the construct specification and scenario blueprint, asks for a concrete adolescent situation with four options, runs quality checks, and stores the result as structured JSON. The record preserves the model, prompt, and constraints used for generation so the candidate can be reviewed in context rather than as detached prose.
+Generation Studio turns one selected facet into a structured authoring request. It presents the construct specification and scenario blueprint, asks for a concrete adolescent situation with four options, runs quality checks, and stores the result as structured JSON. The supported generation metadata are the model identifier, prompt version, and constraint snapshot; the full rendered prompt is not stored.
 
 ### 3. Human Review
 
@@ -89,11 +88,11 @@ Participant View removes construct labels, hidden scores, rationales, and person
 | Layer | Current implementation |
 | --- | --- |
 | Interface | Streamlit views for project context, construct inspection, generation, review, and participant preview |
-| Workflow | Services that coordinate generation, checking, review transitions, and exports |
-| Records | Pydantic records for structured candidates, provenance, evidence state, and history |
-| Storage | JSON repository used by the workbench session and deployment |
+| Workflow | Services that coordinate generation, checking, review transitions, and reference downloads |
+| Records | Pydantic records for structured candidates, anchor links, evidence state, and history |
+| Storage | Local JSON repository at `workspace_data/v2/projects/` with atomic file replacement |
 | Model integration | OpenAI-compatible adapter with one repair attempt for invalid structured output |
-| Exports | JSON and CSV exports for inspection and retention |
+| Review downloads | JSON and CSV projections containing reference items only, not live-generated, reviewed, or promoted candidates |
 
 For a concise implementation inventory and module map, see [README_V2.md](README_V2.md). Run the repository test suite with:
 
@@ -103,7 +102,9 @@ python -m pytest
 
 ## Current deployment boundary
 
-Live generation requires model credentials and an access code. On Streamlit Community Cloud, repository storage is **ephemeral**; generated or reviewed records may not survive a restart, redeploy, or instance replacement. Export JSON or CSV when records need to be retained outside the current deployment.
+Live generation requires model credentials and an access code. On Streamlit Community Cloud, repository storage is **ephemeral**; generated or reviewed records may not survive a restart, redeploy, or instance replacement.
+
+The current Review downloads contain reference items only and cannot back up live-generated candidates, including reviewed or promoted candidates. The current cloud download buttons are not a generated-candidate backup. Durable research work should use a local deployment and an external backup of `workspace_data/v2/projects/`.
 
 The reference path remains available without model configuration. The workbench does not replace pilot studies or evidence for reliability, validity, and measurement invariance. It must not be used for diagnosis, high-stakes decisions, or individual-level inference.
 
@@ -119,7 +120,7 @@ No open-source license is currently declared. Contact the repository owner befor
 
 ### 1. 在线查看参考内容
 
-打开[在线工作台](https://adolescent-big-five-workbench.streamlit.app/)。查看 Project、Construct Map、参考题目、审核元数据和 Participant View 不需要模型凭据。普通浏览不会调用模型，**does not consume model tokens**。
+打开[在线工作台](https://adolescent-big-five-workbench.streamlit.app/)。查看 Project、Construct Map、参考题目、审核元数据和 Participant View 不需要模型凭据。普通浏览不会调用模型，也不会消耗模型 token（does not consume model tokens）。
 
 ### 2. 使用模型生成候选题目
 
@@ -133,6 +134,8 @@ No open-source license is currently declared. Contact the repository owner befor
 4. 再执行 `PROMOTE TO PILOT`，将状态推进为 `PILOT_CANDIDATE`。
 
 这两个动作相互独立，避免把内容可用性与测量证据混为一谈。进入试测候选状态不代表信度、效度或跨群体等值性已经成立。
+
+当前 Review 下载仅包含参考题目，不能备份实时生成、已审核或已推进的候选题目。
 
 ### 4. 在 Participant View 中查看
 
@@ -164,4 +167,4 @@ LIVE_ACCESS_CODE=
 powershell -ExecutionPolicy Bypass -File .\run_v2.ps1
 ```
 
-然后访问 [http://localhost:8501](http://localhost:8501)。每个 workspace 只运行一个 Streamlit 进程。不要将 API key、访问码或其他 secrets 提交到版本库。
+然后访问 [http://localhost:8501](http://localhost:8501)。每个 workspace 只运行一个 Streamlit 进程。需要持久保存研究工作时，请使用本地部署，并在外部备份 `workspace_data/v2/projects/`。不要将 API key、访问码或其他 secrets 提交到版本库。

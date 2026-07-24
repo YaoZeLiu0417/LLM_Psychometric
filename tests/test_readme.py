@@ -61,7 +61,13 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
         "http://localhost:8501",
         "Streamlit Community Cloud",
         "ephemeral",
+        "reference items only",
+        "cannot back up live-generated candidates",
+        "workspace_data/v2/projects/",
+        "model identifier, prompt version, and constraint snapshot",
+        "Workflow / Human Review",
         "does not consume model tokens",
+        "普通浏览不会调用模型，也不会消耗模型 token（does not consume model tokens）。",
         "README_V2.md",
     )
 
@@ -71,3 +77,11 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
     lowercase_documentation = documentation.lower()
     for unsupported_claim in ("curated demo", "live available", "408 participants"):
         assert unsupported_claim not in lowercase_documentation
+
+    for inaccurate_claim in (
+        'G --> I["JSON / CSV export"]',
+        "preserves the model, prompt, and constraints",
+        "source provenance",
+        "Evidence / Human Reviewed",
+    ):
+        assert inaccurate_claim not in documentation

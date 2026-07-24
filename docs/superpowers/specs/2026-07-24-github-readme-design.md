@@ -15,7 +15,7 @@ The primary audience is psychology, psychometrics, developmental science, and co
 
 The core message is:
 
-> The workbench transforms established Big Five construct anchors into age-appropriate situational judgement item candidates for mainland Chinese adolescents aged 12-15 while preserving theoretical provenance, generation constraints, quality evidence, and human review history.
+> The workbench transforms established Big Five construct anchors into age-appropriate situational judgement item candidates for mainland Chinese adolescents aged 12-15 while preserving anchor-linked traceability, generation constraints, quality evidence, and human review history.
 
 The README must not imply that the system is a validated test, a diagnostic product, or evidence that generated items are psychometrically superior.
 
@@ -76,7 +76,7 @@ The hero must not use `curated demo`, `live available`, or other provisional rel
 
 - the 2023 master's project focused on college students;
 - the current reconstruction targets mainland Chinese adolescents aged 12-15;
-- V2 improves the authoring, provenance, review, and interface workflow;
+- V2 improves the authoring, anchor-linked traceability, review, and interface workflow;
 - the earlier study is research lineage, not evidence that V2 is validated or superior;
 - unverified historical sample sizes or results are not restated.
 
@@ -92,17 +92,17 @@ Big Five source anchors
 -> Quality checks
 -> Human review and version history
 -> Pilot candidate
--> Participant View and research export
+-> Participant View
 ```
 
-The accompanying text explains that the facet is the generation unit and that source direction, behavioral indicators, scenario constraints, option scoring, checks, and human edits remain inspectable.
+The accompanying text explains that the facet is the generation unit and that source direction, behavioral indicators, scenario constraints, option scoring, checks, and human edits remain inspectable. Review downloads are documented separately: they contain the reference item set only and cannot back up live-generated candidates.
 
 ### 5.4 Workbench Tour
 
 The feature tour uses three focused screenshots after the Construct Map panorama:
 
 1. `Generation Studio`: construct specification, scenario blueprint, response-option design, and checks.
-2. `Review Workbench`: editable Chinese content, evidence status, provenance, reviewer notes, and version history.
+2. `Review Workbench`: editable Chinese content, evidence status, anchor-linked traceability, reviewer notes, and version history.
 3. `Participant View`: participant-facing Chinese items without construct labels, scoring keys, or personality feedback.
 
 Captions describe research functions, not generic product benefits.
@@ -129,7 +129,8 @@ The technical section stays compact and describes:
 - versioned local JSON persistence;
 - an OpenAI-compatible model adapter;
 - structured JSON generation and one repair attempt;
-- JSON and CSV research exports.
+- reference-only JSON and CSV Review downloads;
+- local project persistence at `workspace_data/v2/projects/`.
 
 It links to the existing implementation notes instead of duplicating every runtime detail.
 
@@ -141,7 +142,8 @@ The README must state:
 - `OPENAI_BASE_URL` is optional for compatible endpoints;
 - credentials and access codes must never be committed;
 - Streamlit Community Cloud storage is ephemeral, so generated and reviewed items may disappear after an app restart or redeployment;
-- exported JSON/CSV should be downloaded when work needs to be retained;
+- current Review downloads contain reference items only and cannot back up live-generated candidates, including reviewed or promoted candidates;
+- durable research work should use a local deployment and an external backup of `workspace_data/v2/projects/`; current cloud download buttons are not a generated-candidate backup;
 - model output, automated checks, and human review do not substitute for pilot testing and psychometric validation;
 - the system must not be used for diagnosis, high-stakes decisions, or individual personality inference.
 
@@ -190,8 +192,8 @@ The README gives readers a stable fallback for each operational boundary:
 
 - no model configuration: browse reference content and the complete workbench structure;
 - invalid or missing access code: remain in the public reference path;
-- generation failure: retain completed work, retry later, or inspect reference content;
-- ephemeral cloud restart: restore from a previously downloaded export where available;
+- generation failure: retry later or inspect reference content; durable completed work requires local project storage and an external backup;
+- ephemeral cloud restart: do not expect the current reference-only downloads to restore live-generated candidates; use a local deployment and back up `workspace_data/v2/projects/` externally;
 - broken local launch: verify Python dependencies, root environment variables, and the single Streamlit process requirement.
 
 The wording remains concise and does not expose stack traces or encourage users to paste credentials into issues.
@@ -223,7 +225,7 @@ The work is complete when:
 - a Chinese-speaking researcher can follow the online and local workflows without prior project context;
 - the 2023 college-student lineage and current adolescent focus are clearly distinguished;
 - the live-generation, review, pilot-promotion, and participant-preview instructions match the application;
-- persistence and psychometric limitations are explicit;
+- the reference-only download boundary and the local `workspace_data/v2/projects/` backup requirement are explicit;
 - future research directions are clearly prospective;
 - repository verification passes and the final changes are published through the agreed Git workflow.
 

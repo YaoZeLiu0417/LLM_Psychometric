@@ -5,7 +5,7 @@
 <p><strong>A traceable, human-reviewed workflow transforming established Big Five anchors into situational judgement item candidates for mainland Chinese adolescents aged 12-15.</strong></p>
 
 <p>
-  <a href="https://adolescent-big-five-workbench.streamlit.app/">Open the deployed app</a>
+  <a href="https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true">Open the deployed app</a>
   · <a href="#research-workflow">Research workflow</a>
   · <a href="#中文使用说明">中文使用说明</a>
 </p>
@@ -124,7 +124,7 @@ No open-source license is currently declared. Contact the repository owner befor
 
 ### 1. 在线查看参考内容
 
-打开[在线工作台](https://adolescent-big-five-workbench.streamlit.app/)。查看 Project、Construct Map、参考题目、审核元数据和 Participant View 不需要模型凭据。普通浏览不会调用模型，也不会消耗模型 token（does not consume model tokens）。
+打开[在线工作台](https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true)。查看 Project、Construct Map、参考题目、审核元数据和 Participant View 不需要模型凭据。普通浏览不会调用模型，也不会消耗模型 token（does not consume model tokens）。
 
 ### 2. 使用模型生成候选题目
 

@@ -166,7 +166,7 @@ def test_root_readme_presents_the_research_dossier() -> None:
     documentation = _documentation()
     _assert_key_heading_order(documentation)
     required_phrases = (
-        "https://adolescent-big-five-workbench.streamlit.app/",
+        "https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true",
         "5 domains",
         "15 facets",
         "60 traceable anchors",
@@ -180,6 +180,8 @@ def test_root_readme_presents_the_research_dossier() -> None:
 
     for phrase in required_phrases:
         assert phrase in documentation
+
+    assert "https://adolescent-big-five-workbench.streamlit.app/" not in documentation
 
 
 def test_root_readme_documents_the_real_operating_contract() -> None:

@@ -19,6 +19,7 @@ _DEFAULTS: dict[str, Any] = {
     "v2_construct_spec": None,
     "v2_scenario_blueprint": None,
     "v2_candidate_item": None,
+    "v2_generation_attempts": 0,
     "v2_participant_index": 0,
     "v2_participant_responses": {},
 }

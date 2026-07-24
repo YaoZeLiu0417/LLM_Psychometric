@@ -10,6 +10,10 @@ from PIL import Image, UnidentifiedImageError
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 ASSET_DIR = ROOT / "docs" / "assets" / "readme"
+PUBLIC_WORKBENCH_URL = (
+    "https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true"
+)
+OLD_WORKBENCH_URL = "https://adolescent-big-five-workbench.streamlit.app/"
 
 EXPECTED_KEY_HEADINGS = (
     (1, "Adolescent Big Five Workbench"),
@@ -72,6 +76,16 @@ def _assert_key_heading_order(documentation: str) -> None:
         heading for heading in _markdown_headings(documentation) if heading[1] in key_titles
     )
     assert actual == EXPECTED_KEY_HEADINGS
+
+
+def _assert_deployment_links(documentation: str) -> None:
+    english_targets = re.findall(
+        r'<a\s+href="([^"]+)">Open the deployed app</a>', documentation
+    )
+    chinese_targets = re.findall(r"\[在线工作台\]\(([^)]+)\)", documentation)
+
+    assert english_targets == [PUBLIC_WORKBENCH_URL]
+    assert chinese_targets == [PUBLIC_WORKBENCH_URL]
 
 
 def _assert_workflow_mermaid(documentation: str) -> None:
@@ -165,8 +179,8 @@ def test_png_size_rejects_missing_pixel_rows(tmp_path: Path) -> None:
 def test_root_readme_presents_the_research_dossier() -> None:
     documentation = _documentation()
     _assert_key_heading_order(documentation)
+    _assert_deployment_links(documentation)
     required_phrases = (
-        "https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true",
         "5 domains",
         "15 facets",
         "60 traceable anchors",
@@ -181,7 +195,35 @@ def test_root_readme_presents_the_research_dossier() -> None:
     for phrase in required_phrases:
         assert phrase in documentation
 
-    assert "https://adolescent-big-five-workbench.streamlit.app/" not in documentation
+
+
+@pytest.mark.parametrize(
+    "link_markup",
+    (
+        f'<a href="{PUBLIC_WORKBENCH_URL}">Open the deployed app</a>',
+        f"[在线工作台]({PUBLIC_WORKBENCH_URL})",
+    ),
+)
+def test_deployment_link_contract_rejects_each_mutated_target(
+    link_markup: str,
+) -> None:
+    documentation = _documentation()
+    assert link_markup in documentation
+
+    with pytest.raises(AssertionError):
+        _assert_deployment_links(
+            documentation.replace(
+                link_markup,
+                link_markup.replace(PUBLIC_WORKBENCH_URL, "https://example.invalid/"),
+                1,
+            )
+        )
+
+
+def test_deployment_link_contract_allows_old_url_in_unrelated_prose() -> None:
+    documentation = f"{_documentation()}\nHistorical endpoint: {OLD_WORKBENCH_URL}\n"
+
+    _assert_deployment_links(documentation)
 
 
 def test_root_readme_documents_the_real_operating_contract() -> None:

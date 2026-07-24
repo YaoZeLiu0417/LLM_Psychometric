@@ -14,9 +14,9 @@ _CREDENTIAL_PATTERNS = (
     re.compile(rb"\bAKIA[A-Z0-9]{16}\b"),
 )
 _SECRET_ASSIGNMENT = re.compile(
-    rb"(?im)^\s*(?:export\s+)?"
+    rb"(?im)^[ \t]*(?:export[ \t]+)?"
     rb"(?P<name>[A-Z][A-Z0-9_]*(?:API_KEY|ACCESS_CODE|TOKEN|SECRET|PASSWORD))"
-    rb"\s*=\s*(?P<value>[^\r\n#]*)"
+    rb"[ \t]*=[ \t]*(?P<value>[^\r\n#]*)"
 )
 _PERSONAL_PATH_PATTERNS = (
     re.compile(rb"(?i)\b[A-Z]:\\Users\\[^\\\r\n]+"),
@@ -82,7 +82,13 @@ def scan_content(source: str, content: bytes) -> tuple[Finding, ...]:
             )
         )
 
-    if any(pattern.search(content) for pattern in _PERSONAL_PATH_PATTERNS):
+    normalized_source = source.replace("\\", "/")
+    scanner_source = normalized_source.endswith(
+        "scripts/audit_public_release.py"
+    )
+    if not scanner_source and any(
+        pattern.search(content) for pattern in _PERSONAL_PATH_PATTERNS
+    ):
         findings.append(
             Finding(
                 rule="personal-path",

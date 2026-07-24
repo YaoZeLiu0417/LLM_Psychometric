@@ -16,6 +16,13 @@ def test_scan_content_accepts_documented_placeholders() -> None:
     ) == ()
 
 
+def test_scan_content_accepts_consecutive_blank_secret_assignments() -> None:
+    assert scan_content(
+        ".env.example",
+        b"OPENAI_API_KEY=\nLIVE_ACCESS_CODE=\n",
+    ) == ()
+
+
 def test_scan_content_flags_secret_values_and_personal_paths() -> None:
     credential = b"sk" + b"-" + (b"x" * 32)
     assignment = b"LIVE_ACCESS" + b"_CODE=real-secret-value"
@@ -46,6 +53,15 @@ def test_scanner_source_does_not_match_its_pattern_literals() -> None:
     source = Path("scripts/audit_public_release.py").read_bytes()
 
     assert scan_content("scripts/audit_public_release.py", source) == ()
+
+
+def test_historical_scanner_regex_literal_is_not_a_personal_path() -> None:
+    historical_literal = b're.compile(rb"/' + b'Users/[^/\\s]+")'
+
+    assert scan_content(
+        "history:old-object:scripts/audit_public_release.py",
+        historical_literal,
+    ) == ()
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[bytes]:

@@ -95,7 +95,7 @@ Big Five source anchors
 -> Participant View
 ```
 
-The accompanying text explains that the facet is the generation unit and that source direction, behavioral indicators, scenario constraints, option scoring, checks, and human edits remain inspectable. Review downloads are documented separately: they contain the reference item set only and cannot back up live-generated candidates.
+The accompanying text explains that the facet is the generation unit and that source direction, behavioral indicators, scenario constraints, option scoring, checks, and human edits remain inspectable. Review downloads are documented separately: they contain reference items only, not live-generated candidates, even after review or promotion.
 
 ### 5.4 Workbench Tour
 
@@ -142,7 +142,7 @@ The README must state:
 - `OPENAI_BASE_URL` is optional for compatible endpoints;
 - credentials and access codes must never be committed;
 - Streamlit Community Cloud storage is ephemeral, so generated and reviewed items may disappear after an app restart or redeployment;
-- current Review downloads contain reference items only and cannot back up live-generated candidates, including reviewed or promoted candidates;
+- current Review downloads contain reference items only, not live-generated candidates, even after review or promotion;
 - durable research work should use a local deployment and an external backup of `workspace_data/v2/projects/`; current cloud download buttons are not a generated-candidate backup;
 - model output, automated checks, and human review do not substitute for pilot testing and psychometric validation;
 - the system must not be used for diagnosis, high-stakes decisions, or individual personality inference.

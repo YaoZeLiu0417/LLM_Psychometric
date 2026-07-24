@@ -92,7 +92,7 @@ Participant View removes construct labels, hidden scores, rationales, and person
 | Records | Pydantic records for structured candidates, anchor links, evidence state, and history |
 | Storage | Local JSON repository at `workspace_data/v2/projects/` with atomic file replacement |
 | Model integration | OpenAI-compatible adapter with one repair attempt for invalid structured output |
-| Review downloads | JSON and CSV projections containing reference items only, not live-generated, reviewed, or promoted candidates |
+| Review downloads | JSON and CSV projections containing reference items only, not live-generated candidates, even after review or promotion |
 
 For a concise implementation inventory and module map, see [README_V2.md](README_V2.md). Run the repository test suite with:
 
@@ -104,7 +104,7 @@ python -m pytest
 
 Live generation requires model credentials and an access code. On Streamlit Community Cloud, repository storage is **ephemeral**; generated or reviewed records may not survive a restart, redeploy, or instance replacement.
 
-The current Review downloads contain reference items only and cannot back up live-generated candidates, including reviewed or promoted candidates. The current cloud download buttons are not a generated-candidate backup. Durable research work should use a local deployment and an external backup of `workspace_data/v2/projects/`.
+The current Review downloads contain reference items only, not live-generated candidates, even after review or promotion. The current cloud download buttons are not a generated-candidate backup. Durable research work should use a local deployment and an external backup of `workspace_data/v2/projects/`.
 
 The reference path remains available without model configuration. The workbench does not replace pilot studies or evidence for reliability, validity, and measurement invariance. It must not be used for diagnosis, high-stakes decisions, or individual-level inference.
 
@@ -135,7 +135,7 @@ No open-source license is currently declared. Contact the repository owner befor
 
 这两个动作相互独立，避免把内容可用性与测量证据混为一谈。进入试测候选状态不代表信度、效度或跨群体等值性已经成立。
 
-当前 Review 下载仅包含参考题目，不能备份实时生成、已审核或已推进的候选题目。
+当前 Review 下载仅包含参考题目，不包含实时生成的候选题目；即使这些实时生成的候选题目之后已经过审核或推进至试测状态，也不会包含在下载中。
 
 ### 4. 在 Participant View 中查看
 

@@ -62,7 +62,7 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
         "Streamlit Community Cloud",
         "ephemeral",
         "reference items only",
-        "cannot back up live-generated candidates",
+        "not live-generated candidates, even after review or promotion",
         "workspace_data/v2/projects/",
         "model identifier, prompt version, and constraint snapshot",
         "Workflow / Human Review",
@@ -83,5 +83,7 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
         "preserves the model, prompt, and constraints",
         "source provenance",
         "Evidence / Human Reviewed",
+        "including reviewed or promoted candidates",
+        "not live-generated, reviewed, or promoted candidates",
     ):
         assert inaccurate_claim not in documentation

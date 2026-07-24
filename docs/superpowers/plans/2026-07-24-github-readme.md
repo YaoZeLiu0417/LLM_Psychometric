@@ -96,7 +96,7 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
         "Streamlit Community Cloud",
         "ephemeral",
         "reference items only",
-        "cannot back up live-generated candidates",
+        "not live-generated candidates, even after review or promotion",
         "workspace_data/v2/projects/",
         "model identifier, prompt version, and constraint snapshot",
         "Workflow / Human Review",
@@ -116,6 +116,8 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
         "preserves the model, prompt, and constraints",
         "source provenance",
         "Evidence / Human Reviewed",
+        "including reviewed or promoted candidates",
+        "not live-generated, reviewed, or promoted candidates",
     ):
         assert inaccurate_claim not in documentation
 ```
@@ -233,7 +235,7 @@ Participant View removes construct labels, scoring keys, quality metadata, and p
 
 两个动作分离是为了避免“内容看起来可用”被误解为“已经具备测量学证据”。
 
-当前 Review 下载仅包含参考题目，不能备份实时生成、已审核或已推进的候选题目。
+当前 Review 下载仅包含参考题目，不包含实时生成的候选题目；即使这些实时生成的候选题目之后已经过审核或推进至试测状态，也不会包含在下载中。
 
 ### 4. 在 Participant View 中查看
 
@@ -274,7 +276,7 @@ powershell -ExecutionPolicy Bypass -File .\run_v2.ps1
 | Pydantic records | Typed constructs, scenarios, options, checks, and review history |
 | JSON repository | Local project state at `workspace_data/v2/projects/` with atomic file replacement |
 | Model adapter | OpenAI-compatible structured generation with one repair attempt |
-| Review downloads | JSON and CSV projections containing reference items only, not live-generated, reviewed, or promoted candidates |
+| Review downloads | JSON and CSV projections containing reference items only, not live-generated candidates, even after review or promotion |
 
 Detailed runtime notes remain in [README_V2.md](README_V2.md). Run the repository checks with:
 
@@ -286,7 +288,7 @@ python -m pytest
 
 - Live generation requires configured model credentials and a valid session access code.
 - Streamlit Community Cloud storage is **ephemeral**. Generated and reviewed items may disappear after a restart or redeployment.
-- Current Review downloads contain reference items only and cannot back up live-generated candidates, including reviewed or promoted candidates.
+- Current Review downloads contain reference items only, not live-generated candidates, even after review or promotion.
 - Durable research work should use a local deployment and an external backup of `workspace_data/v2/projects/`; current cloud download buttons are not a generated-candidate backup.
 - Missing model configuration affects generation only; the reference research path remains available.
 - Model output, automated checks, and human review do not replace pilot testing, reliability or validity evidence, or measurement-invariance analysis.
@@ -464,7 +466,7 @@ Run:
 git diff --check master...HEAD
 git diff --name-only master...HEAD
 rg -n "sk-[A-Za-z0-9]|LIVE_ACCESS_CODE=.+|OPENAI_API_KEY=.+|curated demo|live available|408 participants" README.md docs/assets/readme tests/test_readme.py
-rg -n "reference items only|cannot back up live-generated candidates|workspace_data/v2/projects/|model identifier, prompt version, and constraint snapshot|Workflow / Human Review" README.md tests/test_readme.py
+rg -n "reference items only|not live-generated candidates, even after review or promotion|workspace_data/v2/projects/|model identifier, prompt version, and constraint snapshot|Workflow / Human Review" README.md tests/test_readme.py
 rg -n "G --> I|preserves the model, prompt, and constraints|source provenance|Evidence / Human Reviewed|exports for inspection and retention" README.md
 ```
 

@@ -87,3 +87,26 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
         "not live-generated, reviewed, or promoted candidates",
     ):
         assert inaccurate_claim not in documentation
+
+
+def test_root_readme_assets_are_real_consistent_png_captures() -> None:
+    documentation = _documentation()
+    asset_names = (
+        "construct-map.png",
+        "generation-studio.png",
+        "review-workbench.png",
+        "participant-view.png",
+    )
+    dimensions: set[tuple[int, int]] = set()
+
+    for asset_name in asset_names:
+        relative_path = f"docs/assets/readme/{asset_name}"
+        assert relative_path in documentation
+        asset_path = ASSET_DIR / asset_name
+        assert asset_path.is_file(), f"Missing README asset: {asset_name}"
+        width, height = _png_size(asset_path)
+        assert width >= 1000
+        assert height >= 650
+        dimensions.add((width, height))
+
+    assert len(dimensions) == 1, "README screenshots must share one viewport"

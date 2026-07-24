@@ -15,7 +15,11 @@ from psychometric_v2.models import (
     ReviewAction,
 )
 from psychometric_v2.repository import JsonProjectRepository
-from psychometric_v2.workbench import ReviewVersionConflict, WorkbenchService
+from psychometric_v2.workbench import (
+    MutationPermissionError,
+    ReviewVersionConflict,
+    WorkbenchService,
+)
 
 
 def service_with_seed(tmp_path):
@@ -416,5 +420,30 @@ def test_save_generated_item_rejects_invalid_or_mismatched_input(tmp_path) -> No
         match="generated item must use LIVE generation mode",
     ):
         service.save_generated_item(project.config.project_id, curated)
+
+    assert repository.load(project.config.project_id) == project
+
+
+def test_unauthorized_service_denies_review_without_loading_or_writing(
+    tmp_path,
+) -> None:
+    service, repository, project = service_with_seed(tmp_path)
+    service = WorkbenchService(repository, mutation_authorized=False)
+    item = next(iter(project.items.values()))
+
+    with pytest.raises(MutationPermissionError, match="Researcher Access"):
+        review(service, project.config.project_id, item)
+
+    assert repository.load(project.config.project_id) == project
+
+
+def test_unauthorized_service_denies_generation_before_input_validation(
+    tmp_path,
+) -> None:
+    service, repository, project = service_with_seed(tmp_path)
+    service = WorkbenchService(repository, mutation_authorized=False)
+
+    with pytest.raises(MutationPermissionError, match="Researcher Access"):
+        service.save_generated_item(project.config.project_id, {"invalid": True})
 
     assert repository.load(project.config.project_id) == project

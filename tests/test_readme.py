@@ -3,6 +3,7 @@ import zlib
 from pathlib import Path
 
 import pytest
+from PIL import Image, UnidentifiedImageError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,84 +16,24 @@ def _documentation() -> str:
     return README.read_text(encoding="utf-8")
 
 
+def _png_chunk(chunk_type: bytes, payload: bytes) -> bytes:
+    checksum = zlib.crc32(payload, zlib.crc32(chunk_type)) & 0xFFFFFFFF
+    return struct.pack(">I", len(payload)) + chunk_type + payload + struct.pack(">I", checksum)
+
+
 def _png_size(path: Path) -> tuple[int, int]:
-    data = path.read_bytes()
-    assert data[:8] == b"\x89PNG\r\n\x1a\n", f"{path} is not a PNG"
-
-    offset = 8
-    width = height = None
-    idat_parts: list[bytes] = []
-    saw_iend = False
-    chunk_index = 0
-
-    while offset < len(data):
-        assert len(data) - offset >= 12, f"{path} is truncated"
-        chunk_length = struct.unpack(">I", data[offset : offset + 4])[0]
-        chunk_type = data[offset + 4 : offset + 8]
-        payload_start = offset + 8
-        payload_end = payload_start + chunk_length
-        chunk_end = payload_end + 4
-        assert chunk_end <= len(data), f"{path} is truncated"
-
-        payload = data[payload_start:payload_end]
-        expected_crc = struct.unpack(">I", data[payload_end:chunk_end])[0]
-        actual_crc = zlib.crc32(payload, zlib.crc32(chunk_type)) & 0xFFFFFFFF
-        assert actual_crc == expected_crc, f"{path} has an invalid {chunk_type!r} CRC"
-
-        if chunk_type == b"IHDR":
-            assert chunk_index == 0 and width is None, f"{path} has an invalid IHDR"
-            assert chunk_length == 13, f"{path} has an invalid IHDR"
-            (
-                width,
-                height,
-                bit_depth,
-                color_type,
-                compression_method,
-                filter_method,
-                interlace_method,
-            ) = struct.unpack(">IIBBBBB", payload)
-            valid_bit_depths = {
-                0: {1, 2, 4, 8, 16},
-                2: {8, 16},
-                3: {1, 2, 4, 8},
-                4: {8, 16},
-                6: {8, 16},
-            }
-            assert width > 0 and height > 0, f"{path} has an invalid IHDR"
-            assert bit_depth in valid_bit_depths.get(color_type, set()), (
-                f"{path} has an invalid IHDR"
-            )
-            assert compression_method == 0, f"{path} has an invalid IHDR"
-            assert filter_method == 0, f"{path} has an invalid IHDR"
-            assert interlace_method in (0, 1), f"{path} has an invalid IHDR"
-        elif chunk_type == b"IDAT":
-            assert width is not None, f"{path} has IDAT before IHDR"
-            idat_parts.append(payload)
-        elif chunk_type == b"IEND":
-            assert chunk_length == 0, f"{path} has an invalid IEND"
-            assert width is not None, f"{path} has IEND before IHDR"
-            assert idat_parts, f"{path} has no IDAT data"
-            assert chunk_end == len(data), f"{path} has data after IEND"
-            saw_iend = True
-            offset = chunk_end
-            break
-
-        offset = chunk_end
-        chunk_index += 1
-
-    assert saw_iend, f"{path} is truncated (missing IEND)"
-
-    decompressor = zlib.decompressobj()
     try:
-        decompressor.decompress(b"".join(idat_parts))
-        decompressor.flush()
-    except zlib.error as exc:
-        raise AssertionError(f"{path} has invalid compressed image data") from exc
-    assert decompressor.eof, f"{path} has truncated compressed image data"
-    assert not decompressor.unused_data, f"{path} has extra compressed image data"
-
-    assert width is not None and height is not None
-    return width, height
+        with Image.open(path) as image:
+            assert image.format == "PNG"
+            image.verify()
+        with Image.open(path) as image:
+            assert image.format == "PNG"
+            image.load()
+            return image.size
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError, AssertionError) as exc:
+        raise AssertionError(
+            f"{path} is truncated or otherwise not a complete decodable PNG"
+        ) from exc
 
 
 def test_png_size_rejects_truncated_file(tmp_path: Path) -> None:
@@ -101,6 +42,20 @@ def test_png_size_rejects_truncated_file(tmp_path: Path) -> None:
 
     with pytest.raises(AssertionError, match="truncated"):
         _png_size(truncated_path)
+
+
+def test_png_size_rejects_missing_pixel_rows(tmp_path: Path) -> None:
+    incomplete_path = tmp_path / "missing-pixel-rows.png"
+    ihdr = struct.pack(">IIBBBBB", 1280, 720, 8, 2, 0, 0, 0)
+    incomplete_path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", ihdr)
+        + _png_chunk(b"IDAT", zlib.compress(b""))
+        + _png_chunk(b"IEND", b"")
+    )
+
+    with pytest.raises(AssertionError, match="complete decodable PNG"):
+        _png_size(incomplete_path)
 
 
 def test_root_readme_presents_the_research_dossier() -> None:

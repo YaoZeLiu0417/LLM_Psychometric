@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import hmac
 import html
 import os
 
 import streamlit as st
 
 from psychometric_v2.config import LiveModelConfig, ModelUnavailable
-from psychometric_v2.live_access import (
-    live_access_configured,
-    live_access_fingerprint,
-    verify_live_access_code,
+from psychometric_v2.deployment import DeploymentSettings
+from psychometric_v2.live_access import researcher_access_granted
+from psychometric_v2.session_runtime import (
+    GenerationLimitReached,
+    generation_remaining,
+    start_generation,
 )
 from psychometric_v2.model_client import OpenAICompatibleClient
 from psychometric_v2.models import (
@@ -24,6 +25,7 @@ from psychometric_v2.models import (
 from psychometric_v2.pipeline import GenerationPipeline, GenerationStageError
 from psychometric_v2.taxonomy import DOMAINS, FACETS
 from psychometric_v2.ui.components import STAGES, render_provenance
+from psychometric_v2.ui.researcher_access import render_researcher_access
 from psychometric_v2.workbench import WorkbenchService
 
 
@@ -44,38 +46,6 @@ def _live_environment_present() -> bool:
         os.getenv("OPENAI_API_KEY", "").strip()
         and os.getenv("LLM_MODEL", "").strip()
     )
-
-
-def _clear_live_access_grant() -> None:
-    st.session_state["v2_live_unlocked"] = False
-    st.session_state["v2_live_access_fingerprint"] = None
-
-
-def _live_access_granted() -> bool:
-    current_fingerprint = live_access_fingerprint()
-    stored_fingerprint = st.session_state.get("v2_live_access_fingerprint")
-    if (
-        current_fingerprint is None
-        or not st.session_state.get("v2_live_unlocked")
-        or not isinstance(stored_fingerprint, str)
-        or not hmac.compare_digest(stored_fingerprint, current_fingerprint)
-    ):
-        _clear_live_access_grant()
-        return False
-    return True
-
-
-def _submit_live_access_code() -> None:
-    submitted = str(st.session_state.get("v2_live_access_input", ""))
-    fingerprint = live_access_fingerprint()
-    if fingerprint is not None and verify_live_access_code(submitted):
-        st.session_state["v2_live_unlocked"] = True
-        st.session_state["v2_live_access_fingerprint"] = fingerprint
-        st.session_state["v2_live_access_error"] = None
-    else:
-        _clear_live_access_grant()
-        st.session_state["v2_live_access_error"] = "Access code not recognized."
-    st.session_state["v2_live_access_input"] = ""
 
 
 def _facet_seed(
@@ -339,6 +309,7 @@ def render(
     project: ResearchProject,
     anchors: dict[str, ConstructAnchor],
     service: WorkbenchService,
+    deployment: DeploymentSettings,
 ) -> None:
     pending_mode = st.session_state.pop("v2_pending_generation_mode", None)
     if pending_mode in (GenerationMode.CURATED.value, GenerationMode.LIVE.value):
@@ -428,34 +399,18 @@ def render(
         context_domain,
     )
     live_ready = _live_environment_present()
-    live_access_granted = _live_access_granted()
-    if live_access_granted:
-        st.caption("LIVE GENERATION UNLOCKED FOR THIS SESSION")
-    elif live_access_configured():
-        with st.expander("UNLOCK LIVE GENERATION"):
-            st.text_input(
-                "LIVE ACCESS CODE",
-                type="password",
-                key="v2_live_access_input",
-            )
-            st.button(
-                "UNLOCK",
-                key="v2_unlock_live",
-                on_click=_submit_live_access_code,
-            )
-    else:
-        st.info("Live generation access is not configured.")
-
-    access_error = st.session_state.get("v2_live_access_error")
-    if access_error:
-        st.error(str(access_error))
+    researcher_access = render_researcher_access()
+    remaining = generation_remaining(st.session_state, deployment)
+    budget_available = remaining is None or remaining > 0
+    if remaining is not None:
+        st.caption(f"PUBLIC DEMO GENERATIONS REMAINING: {remaining}")
 
     action_columns = st.columns(2, gap="small")
     with action_columns[0]:
         generate = st.button(
             "GENERATE",
             key="v2_generate",
-            disabled=not live_ready or not live_access_granted,
+            disabled=not live_ready or not researcher_access or not budget_available,
             use_container_width=True,
         )
     with action_columns[1]:
@@ -478,10 +433,13 @@ def render(
         st.rerun()
 
     if generate:
-        if not _live_access_granted():
-            st.session_state["v2_generation_error"] = "Live generation is locked."
+        if not researcher_access_granted(st.session_state):
+            st.session_state["v2_generation_error"] = (
+                "Researcher Access is required."
+            )
         else:
             try:
+                start_generation(st.session_state, deployment)
                 config = LiveModelConfig.from_env()
                 mode = GenerationMode.LIVE.value
                 st.session_state["v2_generation_mode"] = mode
@@ -530,6 +488,10 @@ def render(
                         stage: "COMPLETE" for stage in STAGES
                     }
                     st.rerun()
+            except GenerationLimitReached:
+                st.session_state["v2_generation_error"] = (
+                    "The generation limit for this session has been reached."
+                )
             except GenerationStageError as error:
                 _store_partial_results(error)
             except ModelUnavailable:

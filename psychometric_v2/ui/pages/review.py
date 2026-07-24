@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from psychometric_v2.exports import project_csv_bytes, project_json_bytes
+from psychometric_v2.live_access import researcher_access_granted
 from psychometric_v2.models import (
     CandidateItem,
     CheckOutcome,
@@ -19,7 +20,12 @@ from psychometric_v2.models import (
 )
 from psychometric_v2.taxonomy import DOMAINS, FACETS
 from psychometric_v2.ui.components import render_provenance, render_status
-from psychometric_v2.workbench import ReviewVersionConflict, WorkbenchService
+from psychometric_v2.ui.researcher_access import render_researcher_access
+from psychometric_v2.workbench import (
+    MutationPermissionError,
+    ReviewVersionConflict,
+    WorkbenchService,
+)
 
 
 _REVIEW_CONFLICT_MESSAGE = (
@@ -307,6 +313,13 @@ def render(
 ) -> None:
     st.markdown('<div class="page-kicker">EVIDENCE-AWARE CURATION</div>', unsafe_allow_html=True)
     st.markdown('<div class="workspace-heading">REVIEW QUEUE</div>', unsafe_allow_html=True)
+    session_access = researcher_access_granted(st.session_state)
+    service_authorized = bool(
+        service is not None and service.mutation_authorized
+    )
+    researcher_access = session_access or service_authorized
+    if session_access or not service_authorized:
+        render_researcher_access()
     st.dataframe(
         _queue(project),
         hide_index=True,
@@ -344,30 +357,42 @@ def render(
             "STEM",
             height=130,
             key=_stem_key(item.item_id),
+            disabled=not researcher_access,
         )
         edited_options: dict[str, str] = {}
         for option in sorted(base_options, key=lambda value: value.display_order):
             edited_options[option.option_id] = st.text_input(
                 f"OPTION {option.display_order}",
                 key=_option_key(item.item_id, option.option_id),
+                disabled=not researcher_access,
             )
         _render_metadata(item)
-        reviewer = st.text_input("REVIEWER", key="v2_review_reviewer")
-        note = st.text_input("REVIEW NOTE", key="v2_review_note")
+        reviewer = st.text_input(
+            "REVIEWER",
+            key="v2_review_reviewer",
+            disabled=not researcher_access,
+        )
+        note = st.text_input(
+            "REVIEW NOTE",
+            key="v2_review_note",
+            disabled=not researcher_access,
+        )
 
         actions = st.columns(4, gap="small")
         action_clicked: ReviewAction | None = None
         conflicted = (
             st.session_state.get("v2_review_conflict_item") == item.item_id
         )
+        locked = not researcher_access
         action_specs = (
-            ("SAVE REVISION", ReviewAction.EDIT, conflicted),
-            ("RETURN", ReviewAction.RETURN, conflicted),
-            ("APPROVE CONTENT", ReviewAction.APPROVE, conflicted),
+            ("SAVE REVISION", ReviewAction.EDIT, locked or conflicted),
+            ("RETURN", ReviewAction.RETURN, locked or conflicted),
+            ("APPROVE CONTENT", ReviewAction.APPROVE, locked or conflicted),
             (
                 "PROMOTE TO PILOT",
                 ReviewAction.PROMOTE_TO_PILOT,
-                conflicted
+                locked
+                or conflicted
                 or item.evidence_status is not EvidenceStatus.HUMAN_REVIEWED,
             ),
         )
@@ -382,7 +407,9 @@ def render(
                     action_clicked = action
 
         if action_clicked is not None:
-            if not reviewer.strip() or not note.strip():
+            if not researcher_access:
+                st.error("Researcher Access is required to modify review records.")
+            elif not reviewer.strip() or not note.strip():
                 st.error("Reviewer and note are required.")
             else:
                 try:
@@ -402,6 +429,10 @@ def render(
                 except ReviewVersionConflict:
                     st.session_state["v2_review_conflict_item"] = item.item_id
                     st.rerun()
+                except MutationPermissionError:
+                    st.error(
+                        "Researcher Access is required to modify review records."
+                    )
                 except ValueError:
                     st.error(
                         "Review could not be saved. "

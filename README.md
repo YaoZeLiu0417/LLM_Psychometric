@@ -90,7 +90,7 @@ Participant View removes construct labels, hidden scores, rationales, and person
 | Interface | Streamlit views for project context, construct inspection, generation, review, and participant preview |
 | Workflow | Services that coordinate generation, checking, review transitions, and reference downloads |
 | Records | Pydantic records for structured candidates, anchor links, evidence state, and history |
-| Storage | Local JSON repository at `workspace_data/v2/projects/` with atomic file replacement |
+| Storage | Session-isolated temporary JSON in `public_demo`; durable local JSON at `workspace_data/v2/projects/` in `research` |
 | Model integration | OpenAI-compatible adapter with one repair attempt for schema-invalid JSON objects |
 | Review downloads | JSON and CSV projections containing reference items only, not live-generated candidates, even after review or promotion |
 
@@ -102,7 +102,11 @@ python -m pytest
 
 ## Current deployment boundary
 
-Live generation requires model credentials and an access code. On Streamlit Community Cloud, repository storage is **ephemeral**; generated or reviewed records may not survive a restart, redeploy, or instance replacement.
+The safe default is `WORKBENCH_DEPLOYMENT=public_demo`. On Streamlit Community Cloud, each browser session receives a session-isolated temporary JSON repository seeded with the same five reference items. Anonymous visitors can navigate all five pages, load reference items, use Participant View, and download reference-only JSON/CSV; anonymous browsing does not consume model tokens because locked flows do not construct a model client. Public-demo records are **ephemeral** and are discarded after session expiry, restart, redeploy, or instance replacement.
+
+`Researcher Access` is one session-scoped gate backed by `LIVE_ACCESS_CODE`. It protects Generate, item edits, Return, Approve, and Promote. Unlocking does not call the model. An unlocked public-demo session permits three generation attempts per session; an attempt is counted before the first model request, including failed requests. This application limit is secondary to a dedicated demo API key with a provider-side spending or balance cap. Model credentials and access codes belong only in Streamlit Secrets, never in Git.
+
+Set `WORKBENCH_DEPLOYMENT=research` for durable local research work. This mode uses `workspace_data/v2/projects/` and has no per-session generation limit, but the same Researcher Access gate still protects model-backed and record-changing actions. Unknown deployment values fail closed before repository mutation or model construction.
 
 The current Review downloads contain reference items only, not live-generated candidates, even after review or promotion. The current cloud download buttons are not a generated-candidate backup. Durable research work should use a local deployment and an external backup of `workspace_data/v2/projects/`.
 
@@ -159,6 +163,8 @@ OPENAI_API_KEY=
 LLM_MODEL=
 OPENAI_BASE_URL=
 LIVE_ACCESS_CODE=
+WORKBENCH_DEPLOYMENT=research
+PUBLIC_DEMO_GENERATION_LIMIT=3
 ```
 
 启动工作台：

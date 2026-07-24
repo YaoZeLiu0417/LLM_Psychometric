@@ -13,7 +13,12 @@ Open `http://localhost:8501`. Public reference items are available without model
 
 ## Runtime boundary
 
-Use one Streamlit server process per workspace. Manual or direct JSON edits and additional processes sharing a workspace are unsupported in demo V2; atomic file replacement does not provide cross-process transaction isolation.
+`WORKBENCH_DEPLOYMENT` selects one of two explicit modes:
+
+- `public_demo` (safe default): creates a session-isolated temporary repository, resets on session or server loss, and permits three generation attempts per session after Researcher Access is unlocked.
+- `research`: uses the durable `workspace_data/v2/projects/` repository and does not apply the public-demo generation limit.
+
+Use one Streamlit server process per durable research workspace. Manual or direct JSON edits and additional processes sharing a workspace are unsupported in demo V2; atomic file replacement does not provide cross-process transaction isolation.
 
 ## Optional live generation
 
@@ -22,9 +27,11 @@ Set these root-level environment variables before launching the app:
 - `OPENAI_API_KEY`: API credential.
 - `LLM_MODEL`: model identifier.
 - `OPENAI_BASE_URL`: optional OpenAI-compatible endpoint.
-- `LIVE_ACCESS_CODE`: access code used to unlock live generation for the current Streamlit session.
+- `LIVE_ACCESS_CODE`: Researcher Access code for the current Streamlit session.
+- `WORKBENCH_DEPLOYMENT`: `public_demo` or `research`.
+- `PUBLIC_DEMO_GENERATION_LIMIT`: public-session generation-start limit; defaults to `3`.
 
-Live generation requires both model configuration (`OPENAI_API_KEY` and `LLM_MODEL`) and a session access-code unlock. The unlock applies only to the current Streamlit session and does not itself trigger a model call.
+Researcher Access protects live generation and every Review mutation. Live generation requires both model configuration (`OPENAI_API_KEY` and `LLM_MODEL`) and a session access-code unlock. The unlock applies only to the current Streamlit session and does not itself trigger a model call. Anonymous browsing does not consume model tokens; it never constructs the model client. Public deployments should use a dedicated provider-capped API credential stored only in Streamlit Secrets.
 
 ## Verification
 

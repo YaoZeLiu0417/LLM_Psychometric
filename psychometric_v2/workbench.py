@@ -35,6 +35,10 @@ class ReviewVersionConflict(ValueError):
         )
 
 
+class MutationPermissionError(PermissionError):
+    pass
+
+
 def _project_lock(repository: Any, project_id: str) -> RLock:
     project_path = Path(repository.path_for(project_id)).resolve()
     lock_key = os.path.normcase(str(project_path))
@@ -64,8 +68,18 @@ def _clone_options(options: Iterable[Any]) -> tuple[ResponseOption, ...]:
 
 
 class WorkbenchService:
-    def __init__(self, repository: Any) -> None:
+    def __init__(
+        self,
+        repository: Any,
+        *,
+        mutation_authorized: bool = True,
+    ) -> None:
         self.repository = repository
+        self.mutation_authorized = mutation_authorized
+
+    def _require_mutation_authorized(self) -> None:
+        if not self.mutation_authorized:
+            raise MutationPermissionError("Researcher Access is required.")
 
     @staticmethod
     def _validated_item_with_checks(
@@ -104,6 +118,7 @@ class WorkbenchService:
         *,
         expected_version: int,
     ) -> ResearchProject:
+        self._require_mutation_authorized()
         _require_nonblank("stem", edited_stem)
         _require_nonblank("reviewer", reviewer)
         _require_nonblank("note", note)
@@ -173,6 +188,7 @@ class WorkbenchService:
         project_id: str,
         item: CandidateItem,
     ) -> ResearchProject:
+        self._require_mutation_authorized()
         if not isinstance(item, CandidateItem):
             raise ValueError("item must be a validated CandidateItem")
         if item.generation_mode is not GenerationMode.LIVE:

@@ -47,7 +47,7 @@ This lineage describes the project's development history. It is not evidence tha
 ## Research workflow
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["Big Five source anchors"] --> B["Construct Map"]
     B --> C["Adolescent constraints"]
     C --> D["Structured generation"]

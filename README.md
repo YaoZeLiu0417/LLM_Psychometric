@@ -73,7 +73,7 @@ Generation Studio turns one selected facet into a structured authoring request. 
 
 ### 3. Human Review
 
-![Human Review workbench showing Chinese item editing, reviewer metadata, evidence state, and version history](docs/assets/readme/review-workbench.png)
+![Human Review workbench showing the Chinese content editor, draft evidence status, anchor provenance, and quality checks](docs/assets/readme/review-workbench.png)
 
 Human Review supports Chinese edits to the scenario and options, together with a named reviewer and review note. Evidence state and version history remain visible. Content approval is deliberately separate from pilot promotion: an item can be judged usable as content without implying that measurement evidence has been established.
 

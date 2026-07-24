@@ -1,5 +1,8 @@
 import struct
+import zlib
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,11 +16,91 @@ def _documentation() -> str:
 
 
 def _png_size(path: Path) -> tuple[int, int]:
-    header = path.read_bytes()[:24]
-    assert len(header) == 24, f"{path} does not contain a complete PNG header"
-    assert header[:8] == b"\x89PNG\r\n\x1a\n", f"{path} is not a PNG"
-    assert header[12:16] == b"IHDR", f"{path} has no IHDR chunk"
-    return struct.unpack(">II", header[16:24])
+    data = path.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", f"{path} is not a PNG"
+
+    offset = 8
+    width = height = None
+    idat_parts: list[bytes] = []
+    saw_iend = False
+    chunk_index = 0
+
+    while offset < len(data):
+        assert len(data) - offset >= 12, f"{path} is truncated"
+        chunk_length = struct.unpack(">I", data[offset : offset + 4])[0]
+        chunk_type = data[offset + 4 : offset + 8]
+        payload_start = offset + 8
+        payload_end = payload_start + chunk_length
+        chunk_end = payload_end + 4
+        assert chunk_end <= len(data), f"{path} is truncated"
+
+        payload = data[payload_start:payload_end]
+        expected_crc = struct.unpack(">I", data[payload_end:chunk_end])[0]
+        actual_crc = zlib.crc32(payload, zlib.crc32(chunk_type)) & 0xFFFFFFFF
+        assert actual_crc == expected_crc, f"{path} has an invalid {chunk_type!r} CRC"
+
+        if chunk_type == b"IHDR":
+            assert chunk_index == 0 and width is None, f"{path} has an invalid IHDR"
+            assert chunk_length == 13, f"{path} has an invalid IHDR"
+            (
+                width,
+                height,
+                bit_depth,
+                color_type,
+                compression_method,
+                filter_method,
+                interlace_method,
+            ) = struct.unpack(">IIBBBBB", payload)
+            valid_bit_depths = {
+                0: {1, 2, 4, 8, 16},
+                2: {8, 16},
+                3: {1, 2, 4, 8},
+                4: {8, 16},
+                6: {8, 16},
+            }
+            assert width > 0 and height > 0, f"{path} has an invalid IHDR"
+            assert bit_depth in valid_bit_depths.get(color_type, set()), (
+                f"{path} has an invalid IHDR"
+            )
+            assert compression_method == 0, f"{path} has an invalid IHDR"
+            assert filter_method == 0, f"{path} has an invalid IHDR"
+            assert interlace_method in (0, 1), f"{path} has an invalid IHDR"
+        elif chunk_type == b"IDAT":
+            assert width is not None, f"{path} has IDAT before IHDR"
+            idat_parts.append(payload)
+        elif chunk_type == b"IEND":
+            assert chunk_length == 0, f"{path} has an invalid IEND"
+            assert width is not None, f"{path} has IEND before IHDR"
+            assert idat_parts, f"{path} has no IDAT data"
+            assert chunk_end == len(data), f"{path} has data after IEND"
+            saw_iend = True
+            offset = chunk_end
+            break
+
+        offset = chunk_end
+        chunk_index += 1
+
+    assert saw_iend, f"{path} is truncated (missing IEND)"
+
+    decompressor = zlib.decompressobj()
+    try:
+        decompressor.decompress(b"".join(idat_parts))
+        decompressor.flush()
+    except zlib.error as exc:
+        raise AssertionError(f"{path} has invalid compressed image data") from exc
+    assert decompressor.eof, f"{path} has truncated compressed image data"
+    assert not decompressor.unused_data, f"{path} has extra compressed image data"
+
+    assert width is not None and height is not None
+    return width, height
+
+
+def test_png_size_rejects_truncated_file(tmp_path: Path) -> None:
+    truncated_path = tmp_path / "truncated.png"
+    truncated_path.write_bytes((ASSET_DIR / "construct-map.png").read_bytes()[:24])
+
+    with pytest.raises(AssertionError, match="truncated"):
+        _png_size(truncated_path)
 
 
 def test_root_readme_presents_the_research_dossier() -> None:

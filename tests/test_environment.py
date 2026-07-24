@@ -12,3 +12,15 @@ def test_streamlit_cloud_has_root_requirements_entrypoint() -> None:
 
     assert requirements.is_file()
     assert requirements.read_text(encoding="utf-8").strip() == "-r requirements-v2.txt"
+
+
+def test_secret_and_generated_paths_are_ignored() -> None:
+    ignored = Path(".gitignore").read_text(encoding="utf-8")
+
+    for pattern in (
+        ".env",
+        ".streamlit/secrets.toml",
+        "workspace_data/",
+        "*.log",
+    ):
+        assert pattern in ignored

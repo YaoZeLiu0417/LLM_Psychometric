@@ -206,6 +206,13 @@ def test_root_readme_documents_the_real_operating_contract() -> None:
         "does not consume model tokens",
         "普通浏览不会调用模型，也不会消耗模型 token（does not consume model tokens）。",
         "README_V2.md",
+        "WORKBENCH_DEPLOYMENT",
+        "public_demo",
+        "research",
+        "three generation attempts per session",
+        "Researcher Access",
+        "session-isolated",
+        "anonymous browsing does not consume model tokens",
     )
 
     for phrase in required_phrases:

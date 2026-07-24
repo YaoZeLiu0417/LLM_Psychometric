@@ -31,7 +31,7 @@ Set these root-level environment variables before launching the app:
 - `WORKBENCH_DEPLOYMENT`: `public_demo` or `research`.
 - `PUBLIC_DEMO_GENERATION_LIMIT`: public-session generation-start limit; defaults to `3`.
 
-Researcher Access protects live generation and every Review mutation. Live generation also requires model configuration (`OPENAI_API_KEY` and `LLM_MODEL`). Unlocking applies only to the current session and does not itself trigger a model call. Anonymous browsing does not consume model tokens; it never constructs the model client. Public deployments should use a dedicated provider-capped API credential stored only in Streamlit Secrets.
+Researcher Access protects live generation and every Review mutation. Live generation requires both model configuration (`OPENAI_API_KEY` and `LLM_MODEL`) and a session access-code unlock. The unlock applies only to the current Streamlit session and does not itself trigger a model call. Anonymous browsing does not consume model tokens; it never constructs the model client. Public deployments should use a dedicated provider-capped API credential stored only in Streamlit Secrets.
 
 ## Verification
 

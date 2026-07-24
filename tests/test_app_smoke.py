@@ -102,11 +102,11 @@ def _widget_with_key(widgets, key: str):
     return next(widget for widget in widgets if widget.key == key)
 
 
-def _authorize_live_session(app: AppTest) -> None:
+def _authorize_researcher_session(app: AppTest) -> None:
     fingerprint = live_access.live_access_fingerprint()
     assert fingerprint is not None
-    app.session_state["v2_live_unlocked"] = True
-    app.session_state["v2_live_access_fingerprint"] = fingerprint
+    app.session_state["v2_researcher_unlocked"] = True
+    app.session_state["v2_researcher_access_fingerprint"] = fingerprint
 
 
 def _force_generate_event(monkeypatch) -> None:
@@ -179,6 +179,20 @@ def test_app_starts_without_live_model_configuration(monkeypatch) -> None:
     app = _run_app()
 
     assert not app.exception
+
+
+def test_public_demo_default_uses_session_repository(monkeypatch) -> None:
+    monkeypatch.delenv("WORKBENCH_DEPLOYMENT", raising=False)
+
+    app = _run_app("PROJECT")
+
+    assert not app.exception
+    repository_root = Path(app.session_state["v2_public_demo_repository_root"])
+    assert repository_root.name == "projects"
+    assert repository_root != (
+        v2_config.WORKSPACE_ROOT / "v2" / "projects"
+    ).resolve()
+    assert repository_root.is_dir()
     markdown = _markdown(app)
     assert "Adolescent Big Five" in markdown
     for hidden_badge in ("CURATED DEMO", "LIVE AVAILABLE", "LIVE UNAVAILABLE"):
@@ -448,6 +462,62 @@ def test_review_queue_and_participant_view_keep_roles_separate() -> None:
     participant_text = _markdown(participant).lower()
     for hidden_term in ("score", "trait", "anchor", "provenance", "profile"):
         assert hidden_term not in participant_text
+
+
+def test_anonymous_review_is_visible_read_only_and_exports_work(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("WORKBENCH_DEPLOYMENT", "public_demo")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access")
+
+    app = _run_app("REVIEW")
+
+    assert not app.exception
+    assert len(app.dataframe[0].value) == 5
+    assert app.text_area[0].disabled is True
+    mutation_inputs = tuple(
+        field
+        for field in app.text_input
+        if field.key != "v2_researcher_access_input"
+    )
+    assert mutation_inputs
+    assert all(field.disabled for field in mutation_inputs)
+    for label in (
+        "SAVE REVISION",
+        "RETURN",
+        "APPROVE CONTENT",
+        "PROMOTE TO PILOT",
+    ):
+        assert _button(app, label).disabled is True
+    assert len(app.get("download_button")) == 2
+
+
+def test_forced_review_event_cannot_bypass_service_gate(monkeypatch) -> None:
+    monkeypatch.setenv("WORKBENCH_DEPLOYMENT", "public_demo")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access")
+    app = _run_app("REVIEW")
+    root = Path(app.session_state["v2_public_demo_repository_root"])
+    repository = JsonProjectRepository(root)
+    project_id = "adolescent-big-five-demo"
+    item_id = app.session_state["v2_review_item"]
+    original = repository.load(project_id).items[item_id]
+    app.session_state["v2_review_reviewer"] = "forced-reviewer"
+    app.session_state["v2_review_note"] = "forced-review-note"
+    real_button = review.st.button
+
+    def forced_review(label, *args, **kwargs):
+        if label == "SAVE REVISION":
+            return True
+        return real_button(label, *args, **kwargs)
+
+    monkeypatch.setattr(review.st, "button", forced_review)
+    app.run()
+
+    assert not app.exception
+    assert app.error[-1].value == (
+        "Researcher Access is required to modify review records."
+    )
+    assert repository.load(project_id).items[item_id] == original
 
 
 def test_participant_prefers_pilot_candidate_over_other_preview_items() -> None:
@@ -740,7 +810,9 @@ render(project, {}, None)
 
 def test_participant_uses_edited_project_from_isolated_workspace(
     isolated_app_workspace,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setenv("WORKBENCH_DEPLOYMENT", "research")
     repository = JsonProjectRepository(isolated_app_workspace / "v2" / "projects")
     project = repository.ensure_seed(build_demo_project())
     item = project.items[project.selected_item_id]
@@ -1249,9 +1321,9 @@ def test_live_generation_is_locked_by_default_with_complete_configuration(
     app = _run_app("GENERATION STUDIO")
 
     assert not app.exception
-    assert app.session_state["v2_live_unlocked"] is False
-    assert app.session_state["v2_live_access_error"] is None
-    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert app.session_state["v2_researcher_unlocked"] is False
+    assert app.session_state["v2_researcher_access_error"] is None
+    assert app.session_state["v2_researcher_access_fingerprint"] is None
     assert _button(app, "GENERATE").disabled is True
     assert _button(app, "LOAD REFERENCE ITEM").disabled is False
     assert not any(widget.key == "v2_generation_mode" for widget in app.selectbox)
@@ -1261,6 +1333,85 @@ def test_live_generation_is_locked_by_default_with_complete_configuration(
         "CONTEXT DOMAIN",
         "ANCHOR",
     ]
+
+
+def test_anonymous_forced_generate_never_constructs_model_client(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("WORKBENCH_DEPLOYMENT", "public_demo")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-model-key")
+    monkeypatch.setenv("LLM_MODEL", "fake-model")
+    constructed = 0
+
+    class ForbiddenClient:
+        def __init__(self, _config) -> None:
+            nonlocal constructed
+            constructed += 1
+
+    _force_generate_event(monkeypatch)
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", ForbiddenClient)
+    app = _run_app("GENERATION STUDIO")
+
+    assert not app.exception
+    assert constructed == 0
+    assert app.session_state["v2_generation_attempts"] == 0
+    assert app.session_state["v2_generation_error"] == (
+        "Researcher Access is required."
+    )
+
+
+def test_public_demo_fourth_generation_is_blocked_before_client(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("WORKBENCH_DEPLOYMENT", "public_demo")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-model-key")
+    monkeypatch.setenv("LLM_MODEL", "fake-model")
+    constructed = 0
+
+    class ForbiddenClient:
+        def __init__(self, _config) -> None:
+            nonlocal constructed
+            constructed += 1
+
+    _force_generate_event(monkeypatch)
+    monkeypatch.setattr(generation, "OpenAICompatibleClient", ForbiddenClient)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "GENERATION STUDIO"
+    app.session_state["v2_generation_attempts"] = 3
+    _authorize_researcher_session(app)
+    app.run()
+
+    assert not app.exception
+    assert constructed == 0
+    assert app.session_state["v2_generation_attempts"] == 3
+    assert "generation limit" in app.error[-1].value.lower()
+
+
+def test_one_researcher_unlock_is_shared_by_generation_and_review(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("WORKBENCH_DEPLOYMENT", "public_demo")
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-model-key")
+    monkeypatch.setenv("LLM_MODEL", "fake-model")
+    app = _run_app("GENERATION STUDIO")
+
+    _widget_with_key(
+        app.text_input,
+        "v2_researcher_access_input",
+    ).set_value("test-only-access")
+    _button(app, "UNLOCK").click().run()
+    app.get("button_group")[0].set_value(["REVIEW"]).run()
+
+    assert not app.exception
+    item_id = app.session_state["v2_review_item"]
+    assert _widget_with_key(
+        app.text_area,
+        f"v2_review_stem_{item_id}",
+    ).disabled is False
+    assert _button(app, "APPROVE CONTENT").disabled is False
 
 
 def test_generation_studio_resets_invalid_internal_mode(monkeypatch) -> None:
@@ -1281,15 +1432,15 @@ def test_wrong_live_access_code_is_rejected(monkeypatch) -> None:
     monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-live-access")
     app = _run_app("GENERATION STUDIO")
 
-    _widget_with_key(app.text_input, "v2_live_access_input").set_value(
+    _widget_with_key(app.text_input, "v2_researcher_access_input").set_value(
         "wrong-test-code"
     )
     _button(app, "UNLOCK").click().run()
 
     assert not app.exception
-    assert app.session_state["v2_live_unlocked"] is False
-    assert app.session_state["v2_live_access_fingerprint"] is None
-    assert app.session_state["v2_live_access_input"] == ""
+    assert app.session_state["v2_researcher_unlocked"] is False
+    assert app.session_state["v2_researcher_access_fingerprint"] is None
+    assert app.session_state["v2_researcher_access_input"] == ""
     assert app.error[0].value == "Access code not recognized."
     assert _button(app, "GENERATE").disabled is True
 
@@ -1318,22 +1469,22 @@ def test_correct_live_access_code_unlocks_without_initializing_model(
     monkeypatch.setattr(generation, "OpenAICompatibleClient", forbidden_client)
     app = _run_app("GENERATION STUDIO")
 
-    _widget_with_key(app.text_input, "v2_live_access_input").set_value(
+    _widget_with_key(app.text_input, "v2_researcher_access_input").set_value(
         "test-only-live-access"
     )
     _button(app, "UNLOCK").click().run()
 
     assert not app.exception
     assert calls == []
-    assert app.session_state["v2_live_unlocked"] is True
+    assert app.session_state["v2_researcher_unlocked"] is True
     assert (
-        app.session_state["v2_live_access_fingerprint"]
+        app.session_state["v2_researcher_access_fingerprint"]
         == live_access.live_access_fingerprint()
     )
-    assert app.session_state["v2_live_access_error"] is None
-    assert app.session_state["v2_live_access_input"] == ""
+    assert app.session_state["v2_researcher_access_error"] is None
+    assert app.session_state["v2_researcher_access_input"] == ""
     assert _button(app, "GENERATE").disabled is False
-    assert "LIVE GENERATION UNLOCKED FOR THIS SESSION" in "\n".join(
+    assert "RESEARCHER ACCESS ENABLED FOR THIS SESSION" in "\n".join(
         caption.value for caption in app.caption
     )
 
@@ -1351,17 +1502,19 @@ def test_absent_or_blank_live_access_configuration_fails_closed(
         monkeypatch.setenv("LIVE_ACCESS_CODE", configured_code)
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
-    app.session_state["v2_live_unlocked"] = True
-    app.session_state["v2_live_access_fingerprint"] = "stale-test-fingerprint"
+    app.session_state["v2_researcher_unlocked"] = True
+    app.session_state["v2_researcher_access_fingerprint"] = "stale-test-fingerprint"
     app.run()
 
     assert not app.exception
-    assert app.session_state["v2_live_unlocked"] is False
-    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert app.session_state["v2_researcher_unlocked"] is False
+    assert app.session_state["v2_researcher_access_fingerprint"] is None
     assert _button(app, "GENERATE").disabled is True
     assert not any(button.label == "UNLOCK" for button in app.button)
-    assert not any(widget.key == "v2_live_access_input" for widget in app.text_input)
-    assert "Live generation access is not configured." in "\n".join(
+    assert not any(
+        widget.key == "v2_researcher_access_input" for widget in app.text_input
+    )
+    assert "Researcher Access is not configured; this session is read-only." in "\n".join(
         info.value for info in app.info
     )
 
@@ -1386,8 +1539,8 @@ def test_forced_generate_event_cannot_bypass_live_access_lock(monkeypatch) -> No
 
     assert not app.exception
     assert calls == []
-    assert app.session_state["v2_generation_error"] == "Live generation is locked."
-    assert app.error[0].value == "Live generation is locked."
+    assert app.session_state["v2_generation_error"] == "Researcher Access is required."
+    assert app.error[0].value == "Researcher Access is required."
 
 
 @pytest.mark.parametrize("replacement_code", (None, "   ", "test-only-access-b"))
@@ -1399,11 +1552,11 @@ def test_access_configuration_change_invalidates_and_clears_session_grant(
     monkeypatch.setenv("LLM_MODEL", "test-only-model")
     monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access-a")
     app = _run_app("GENERATION STUDIO")
-    _widget_with_key(app.text_input, "v2_live_access_input").set_value(
+    _widget_with_key(app.text_input, "v2_researcher_access_input").set_value(
         "test-only-access-a"
     )
     _button(app, "UNLOCK").click().run()
-    stale_fingerprint = app.session_state["v2_live_access_fingerprint"]
+    stale_fingerprint = app.session_state["v2_researcher_access_fingerprint"]
 
     assert stale_fingerprint == live_access.live_access_fingerprint()
     assert _button(app, "GENERATE").disabled is False
@@ -1415,16 +1568,16 @@ def test_access_configuration_change_invalidates_and_clears_session_grant(
     app.run()
 
     assert not app.exception
-    assert app.session_state["v2_live_unlocked"] is False
-    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert app.session_state["v2_researcher_unlocked"] is False
+    assert app.session_state["v2_researcher_access_fingerprint"] is None
     assert _button(app, "GENERATE").disabled is True
 
     monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access-a")
     app.run()
 
     assert not app.exception
-    assert app.session_state["v2_live_unlocked"] is False
-    assert app.session_state["v2_live_access_fingerprint"] is None
+    assert app.session_state["v2_researcher_unlocked"] is False
+    assert app.session_state["v2_researcher_access_fingerprint"] is None
     assert _button(app, "GENERATE").disabled is True
 
 
@@ -1464,7 +1617,7 @@ def test_forced_generate_with_missing_model_values_preserves_display_state(
     monkeypatch.setattr(generation, "OpenAICompatibleClient", forbidden_client)
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
-    _authorize_live_session(app)
+    _authorize_researcher_session(app)
     statuses = _seed_generation_display_state(app, seed)
 
     app.run()
@@ -1493,7 +1646,7 @@ def test_forced_generate_with_invalid_timeout_preserves_display_state(
     monkeypatch.setattr(generation, "OpenAICompatibleClient", forbidden_client)
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
-    _authorize_live_session(app)
+    _authorize_researcher_session(app)
     statuses = _seed_generation_display_state(app, seed)
 
     app.run()
@@ -1566,7 +1719,7 @@ def test_live_success_commits_session_only_after_persistence(monkeypatch) -> Non
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
-    _authorize_live_session(app)
+    _authorize_researcher_session(app)
     app.session_state["v2_candidate_item"] = seed
     app.session_state["v2_selected_item"] = seed.item_id
     app.session_state["v2_stage_status"] = {
@@ -1622,7 +1775,7 @@ def test_live_persistence_failure_restores_session_and_is_public(
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
-    _authorize_live_session(app)
+    _authorize_researcher_session(app)
     app.session_state["v2_candidate_item"] = seed
     app.session_state["v2_selected_item"] = seed.item_id
     app.session_state["v2_stage_status"] = {
@@ -1664,6 +1817,7 @@ from pathlib import Path
 
 from psychometric_v2.config import ANCHOR_ASSET
 from psychometric_v2.demo_seed import build_demo_project
+from psychometric_v2.deployment import DeploymentMode, DeploymentSettings
 from psychometric_v2.legacy import load_anchor_asset
 from psychometric_v2.models import ReviewAction
 from psychometric_v2.repository import JsonProjectRepository
@@ -1694,7 +1848,12 @@ if not item.review_versions:
     )
 init_state()
 st.session_state["v2_active_stage"] = "RESPONSE OPTIONS"
-render(project, load_anchor_asset(ANCHOR_ASSET), service)
+render(
+    project,
+    load_anchor_asset(ANCHOR_ASSET),
+    service,
+    DeploymentSettings(mode=DeploymentMode.RESEARCH),
+)
         """,
         default_timeout=10,
     ).run()
@@ -1754,7 +1913,7 @@ def test_construct_failure_does_not_reuse_previous_live_candidate(monkeypatch) -
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
-    _authorize_live_session(app)
+    _authorize_researcher_session(app)
     app.session_state["v2_active_stage"] = "RESPONSE OPTIONS"
     app.session_state["v2_construct_spec"] = old_live.construct_spec
     app.session_state["v2_scenario_blueprint"] = old_live.scenario_blueprint
@@ -1839,7 +1998,7 @@ def test_live_failure_preserves_partial_stages_and_curated_fallback(monkeypatch)
     app = AppTest.from_file(str(APP_PATH), default_timeout=10)
     app.session_state["v2_active_page"] = "GENERATION STUDIO"
     app.session_state["v2_generation_mode"] = "LIVE GENERATION"
-    _authorize_live_session(app)
+    _authorize_researcher_session(app)
     app.run()
 
     assert not app.exception
@@ -1912,8 +2071,12 @@ def test_review_queue_editor_actions_and_reruns_are_stable() -> None:
     assert _button(app, "PROMOTE TO PILOT").disabled is True
 
 
-def test_review_requires_note_before_creating_a_version() -> None:
-    app = _run_app("REVIEW")
+def test_review_requires_note_before_creating_a_version(monkeypatch) -> None:
+    monkeypatch.setenv("LIVE_ACCESS_CODE", "test-only-access")
+    app = AppTest.from_file(str(APP_PATH), default_timeout=10)
+    app.session_state["v2_active_page"] = "REVIEW"
+    _authorize_researcher_session(app)
+    app.run()
     before = app.dataframe[0].value.copy()
     _widget_with_key(app.text_input, "v2_review_reviewer").set_value("reviewer-a")
 

@@ -14,8 +14,6 @@ CYAN = "#24A8D8"
 ORANGE = "#EF5A24"
 NEUTRAL = "#F5F5F6"
 WHITE = "#FFFFFF"
-GRAY = "#6B6B70"
-LINE = "#D7D7DA"
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
@@ -169,7 +167,9 @@ def build_construct_flow() -> None:
   <text class="footer-note on-dark" x="800" y="877" text-anchor="middle">Workflow state is not evidence of reliability, validity, or measurement invariance.</text>
 </svg>
 """
-    (ASSET_DIR / "construct-to-candidate.svg").write_text(svg, encoding="utf-8")
+    (ASSET_DIR / "construct-to-candidate.svg").write_text(
+        svg, encoding="utf-8", newline="\n"
+    )
 
 
 def build_architecture() -> None:
@@ -249,7 +249,9 @@ def build_architecture() -> None:
   <text class="footer-claim on-dark" x="48" y="862">No React or FastAPI implementation is claimed in this release.</text>
 </svg>
 """
-    (ASSET_DIR / "system-architecture.svg").write_text(svg, encoding="utf-8")
+    (ASSET_DIR / "system-architecture.svg").write_text(
+        svg, encoding="utf-8", newline="\n"
+    )
 
 
 def main() -> None:

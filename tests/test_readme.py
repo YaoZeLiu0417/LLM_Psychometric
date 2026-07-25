@@ -18,6 +18,7 @@ OVERVIEW = ASSET_DIR / "workbench-overview.png"
 WALKTHROUGH = ASSET_DIR / "workbench-walkthrough.gif"
 CONSTRUCT_FLOW = ASSET_DIR / "construct-to-candidate.svg"
 ARCHITECTURE = ASSET_DIR / "system-architecture.svg"
+DOC_REQUIREMENTS = ROOT / "requirements-docs.txt"
 PUBLIC_WORKBENCH_URL = (
     "https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true"
 )
@@ -652,6 +653,16 @@ def test_detailed_screenshots_remain_exactly_once_in_their_tour_sections() -> No
 
 def test_overview_png_is_complete_and_exactly_1600_by_900() -> None:
     assert _png_size(OVERVIEW) == (1600, 900)
+
+
+def test_docs_builder_pins_its_only_dependency() -> None:
+    assert DOC_REQUIREMENTS.is_file()
+    assert DOC_REQUIREMENTS.read_text(encoding="utf-8") == "Pillow==11.1.0\n"
+
+
+@pytest.mark.parametrize("path", (CONSTRUCT_FLOW, ARCHITECTURE))
+def test_docs_builder_emits_lf_only_svg_bytes(path: Path) -> None:
+    assert b"\r\n" not in path.read_bytes()
 
 
 def test_walkthrough_gif_is_complete_readable_and_within_release_budget() -> None:

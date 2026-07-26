@@ -682,6 +682,8 @@ def test_walkthrough_gif_is_complete_readable_and_within_release_budget() -> Non
 
 def test_walkthrough_gif_has_exact_release_metadata() -> None:
     assert _gif_contract(WALKTHROUGH) == (320, 40_000)
+    with Image.open(WALKTHROUGH) as image:
+        assert image.info.get("loop") == 0
 
 
 @pytest.mark.parametrize(

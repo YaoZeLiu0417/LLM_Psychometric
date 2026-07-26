@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="architecture-title architecture-description">
+  <title id="architecture-title">Implemented research workbench architecture</title>
+  <desc id="architecture-description">Four connected layers show the implemented Streamlit views, application services, typed research domain, and adapters and storage, without claiming React or FastAPI components.</desc>
+  <style>
+    text { font-family: "Source Sans 3", Arial, sans-serif; letter-spacing: 0; fill: #0B0B0D; }
+    .kicker { font-size: 20px; font-weight: 700; }
+    .header-title { font-size: 32px; font-weight: 650; }
+    .layer-index { font-size: 17px; font-weight: 700; }
+    .layer-title { font-size: 26px; font-weight: 700; }
+    .component { font-size: 20px; font-weight: 600; }
+    .footer { font-size: 20px; font-weight: 500; }
+    .footer-claim { font-size: 20px; font-weight: 700; }
+    .on-dark { fill: #FFFFFF; }
+  </style>
+  <rect width="1600" height="900" fill="#F5F5F6"/>
+  <rect width="1600" height="118" fill="#0B0B0D"/>
+  <text class="kicker on-dark" x="48" y="40">IMPLEMENTED SYSTEM BOUNDARIES</text>
+  <text class="header-title on-dark" x="48" y="82">Research workbench architecture</text>
+  <rect x="1242" y="94" width="310" height="4" fill="#24A8D8"/>
+
+  <rect x="48" y="144" width="1504" height="126" fill="#FFFFFF" stroke="#0B0B0D" stroke-width="2"/>
+  <rect x="48" y="144" width="414" height="126" fill="#24A8D8"/>
+  <text class="layer-index" x="72" y="179">01 / INTERFACE</text>
+  <text class="layer-title" x="72" y="222">Streamlit Research Views</text>
+  <text class="component" x="510" y="215">Project</text>
+  <text class="component" x="675" y="215">Construct Map</text>
+  <text class="component" x="921" y="215">Generation</text>
+  <text class="component" x="1120" y="215">Review</text>
+  <text class="component" x="1280" y="215">Participant View</text>
+
+  <line x1="800" y1="270" x2="800" y2="286" stroke="#0B0B0D" stroke-width="3"/>
+  <path d="M792 286 L800 298 L808 286 Z" fill="#0B0B0D"/>
+
+  <rect x="48" y="298" width="1504" height="126" fill="#FFFFFF" stroke="#0B0B0D" stroke-width="2"/>
+  <rect x="48" y="298" width="414" height="126" fill="#D81B78"/>
+  <text class="layer-index on-dark" x="72" y="333">02 / ORCHESTRATION</text>
+  <text class="layer-title on-dark" x="72" y="376">Application Services</text>
+  <text class="component" x="510" y="369">Workflow state</text>
+  <text class="component" x="745" y="369">Authorization</text>
+  <text class="component" x="955" y="369">Generation coordination</text>
+  <text class="component" x="1290" y="369">Review transitions</text>
+
+  <line x1="800" y1="424" x2="800" y2="440" stroke="#0B0B0D" stroke-width="3"/>
+  <path d="M792 440 L800 452 L808 440 Z" fill="#0B0B0D"/>
+
+  <rect x="48" y="452" width="1504" height="126" fill="#FFFFFF" stroke="#0B0B0D" stroke-width="2"/>
+  <rect x="48" y="452" width="414" height="126" fill="#40358C"/>
+  <text class="layer-index on-dark" x="72" y="487">03 / RESEARCH OBJECTS</text>
+  <text class="layer-title on-dark" x="72" y="530">Typed Research Domain</text>
+  <text class="component" x="510" y="502">Anchors</text>
+  <text class="component" x="800" y="502">Specifications</text>
+  <text class="component" x="1130" y="502">Candidates</text>
+  <text class="component" x="510" y="548">Quality checks</text>
+  <text class="component" x="800" y="548">Review history</text>
+  <text class="component" x="1130" y="548">Evidence state</text>
+
+  <line x1="800" y1="578" x2="800" y2="594" stroke="#0B0B0D" stroke-width="3"/>
+  <path d="M792 594 L800 606 L808 594 Z" fill="#0B0B0D"/>
+
+  <rect x="48" y="606" width="1504" height="126" fill="#FFFFFF" stroke="#0B0B0D" stroke-width="2"/>
+  <rect x="48" y="606" width="414" height="126" fill="#EF5A24"/>
+  <text class="layer-index" x="72" y="641">04 / INFRASTRUCTURE</text>
+  <text class="layer-title" x="72" y="684">Adapters and Storage</text>
+  <text class="component" x="510" y="677">OpenAI-compatible client</text>
+  <text class="component" x="850" y="660">
+    <tspan x="850" dy="0">Session-isolated and durable JSON</tspan>
+    <tspan x="850" dy="29">repositories</tspan>
+  </text>
+  <text class="component" x="1300" y="677">Reference exports</text>
+
+  <rect x="0" y="772" width="1600" height="128" fill="#0B0B0D"/>
+  <text class="footer on-dark" x="48" y="824">Domain and service boundaries support future interfaces.</text>
+  <text class="footer-claim on-dark" x="48" y="862">No React or FastAPI implementation is claimed in this release.</text>
+</svg>

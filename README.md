@@ -7,6 +7,8 @@
 <p>
   <a href="https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true">Open the deployed app</a>
   · <a href="#research-workflow">Research workflow</a>
+  · <a href="CASE_STUDY.md">English Case Study</a>
+  · <a href="https://github.com/YaoZeLiu0417/LLM_Psychometric/releases/tag/v0.1.0">v0.1.0 Research Preview</a>
   · <a href="#中文使用说明">中文使用说明</a>
 </p>
 
@@ -30,7 +32,7 @@
 > [!IMPORTANT]
 > This workbench develops research candidates. It is **not a validated assessment**, diagnostic instrument, or personality-reporting service. Expert review, pilot testing, and empirical psychometric validation are required before research use.
 
-![Construct Map showing Big Five domains, facets, source identifiers, direction, and anchor-linked traceability](docs/assets/readme/construct-map.png)
+![Adolescent Big Five Workbench interface overview with a dominant Construct Map and a right rail for generation, human review, and participant preview](docs/assets/readme/workbench-overview.png)
 
 ## Research proposition
 
@@ -44,24 +46,23 @@ The 2023 master's system focused on college students. The current reconstruction
 
 This lineage describes the project's development history. It is not evidence that the current V2 workbench is superior to the earlier system, nor that its items or workflow are validated. No unverified historical sample sizes are claimed here.
 
+## 35-45 second walkthrough
+
+![Read-only walkthrough of the research workbench from construct overview through generation, responsibility review, and participant preview](docs/assets/readme/workbench-walkthrough.gif)
+
+The walkthrough uses the same reference content available in the public read-only deployment. It does not press Generate, call a model, or present the displayed candidates as psychometrically validated items.
+
 ## Research workflow
 
-```mermaid
-flowchart TB
-    A["Big Five source anchors"] --> B["Construct Map"]
-    B --> C["Adolescent constraints"]
-    C --> D["Structured generation"]
-    D --> E["Quality checks"]
-    E --> F["Human Review"]
-    F --> G["PILOT_CANDIDATE"]
-    G --> H["Participant View"]
-```
+![Construct-to-candidate responsibility flow separating theoretical inputs, model-assisted authoring, and human governance before empirical validation](docs/assets/readme/construct-to-candidate.svg)
 
 The facet is the generation unit. For each candidate, the workflow keeps the source direction, target behaviors, exclusions, likely confounds, scenario constraints, four response options, hidden scores, rationales, automated checks, and researcher edits available for inspection. This makes the path from source anchor to pilot candidate inspectable without treating generated text as measurement evidence. Review downloads are a separate, reference-only projection rather than an output of the pilot-candidate flow.
 
 ## Workbench tour
 
 ### 1. Construct Map
+
+![Construct Map showing Big Five domains, facets, source identifiers, direction, and anchor-linked traceability](docs/assets/readme/construct-map.png)
 
 The Construct Map organizes five Big Five domains into 15 facets and connects them to 60 anchors. Each anchor retains its wording, scoring direction, domain and facet assignment, source identifier, and anchor identifier so a researcher can inspect what a generation request is intended to represent.
 
@@ -84,6 +85,8 @@ Human Review supports Chinese edits to the scenario and options, together with a
 Participant View removes construct labels, hidden scores, rationales, and personality interpretation from the response surface. It currently shows all `PILOT_CANDIDATE` items when any exist; otherwise, it shows the first five reference items. Responses are session-only and no individual result is reported.
 
 ## Technical foundation
+
+![System architecture showing Streamlit research views, application services, the typed research domain, and adapters and storage](docs/assets/readme/system-architecture.svg)
 
 | Layer | Current implementation |
 | --- | --- |
@@ -118,7 +121,7 @@ The Big Five module is the first vertical of the workbench. Prospective extensio
 
 ## License and research use
 
-No open-source license is currently declared. Contact the repository owner before redistributing the code or deploying a derivative service. Any empirical use requires an appropriate study protocol, expert review, participant safeguards, and psychometric validation.
+This public repository is available for viewing, academic evaluation, and reference, but it is not open-source software and does not grant unrestricted reuse. Copying, modification, redistribution, derivative deployment, or empirical use requires prior written permission; third-party materials retain their own rights and terms. See the [full research-use boundary](LICENSE).
 
 ## 中文使用说明
 

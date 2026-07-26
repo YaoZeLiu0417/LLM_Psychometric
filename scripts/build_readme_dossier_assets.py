@@ -254,10 +254,109 @@ def build_architecture() -> None:
     )
 
 
+def _walkthrough_scene(
+    source: Image.Image, eyebrow: str, heading: str, accent: str
+) -> Image.Image:
+    scene = ImageOps.fit(
+        source,
+        (960, 540),
+        method=Image.Resampling.LANCZOS,
+    ).convert("RGBA")
+    overlay = Image.new("RGBA", scene.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    draw.rectangle((0, 0, 959, 102), fill=(0, 0, 0, 216))
+    draw.rectangle((0, 0, 10, 102), fill=accent)
+    draw.text((30, 18), eyebrow, font=_font(18), fill=accent)
+    draw.text((30, 46), heading, font=_font(31), fill=WHITE)
+    return Image.alpha_composite(scene, overlay).convert("RGB")
+
+
+def build_walkthrough() -> None:
+    scene_specs = (
+        (
+            "workbench-overview.png",
+            "RESEARCH PREVIEW / READ-ONLY",
+            "From the 2023 college-student project to an adolescent workbench",
+            CYAN,
+        ),
+        (
+            "construct-map.png",
+            "01 / THEORETICAL INPUTS",
+            "Inspect domains, facets, source anchors, and scoring direction",
+            VIOLET,
+        ),
+        (
+            "generation-studio.png",
+            "02 / MODEL-ASSISTED AUTHORING",
+            "Review construct, blueprint, options, rationales, and checks",
+            MAGENTA,
+        ),
+        (
+            "review-workbench.png",
+            "03 / HUMAN GOVERNANCE",
+            "Inspect provenance, edit content, and record review decisions",
+            CYAN,
+        ),
+        (
+            "participant-view.png",
+            "04 / PARTICIPANT PREVIEW",
+            "Preview pilot candidates without scores or personality feedback",
+            ORANGE,
+        ),
+    )
+    scenes = [
+        _walkthrough_scene(_screenshot(source), eyebrow, heading, accent)
+        for source, eyebrow, heading, accent in scene_specs
+    ]
+
+    frames = []
+    total_frames = len(scenes) * 64
+    for scene_index, scene in enumerate(scenes):
+        for scene_frame_index in range(64):
+            if scene_index and scene_frame_index < 8:
+                frame = Image.blend(
+                    scenes[scene_index - 1],
+                    scene,
+                    (scene_frame_index + 1) / 8,
+                )
+            else:
+                frame = scene.copy()
+
+            global_frame_index = scene_index * 64 + scene_frame_index
+            progress_width = (global_frame_index + 1) * frame.width // total_frames
+            draw = ImageDraw.Draw(frame)
+            draw.rectangle((0, 536, frame.width - 1, 539), fill=BLACK)
+            draw.rectangle((0, 536, progress_width - 1, 539), fill=MAGENTA)
+            frames.append(frame)
+
+    palette = frames[0].quantize(
+        colors=64,
+        method=Image.Quantize.MEDIANCUT,
+        dither=Image.Dither.NONE,
+    )
+    quantized_frames = [
+        frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames
+    ]
+    # GIF delays use 10 ms units, so alternate around 125 ms to preserve 8 fps.
+    # Disposal 1 keeps unchanged pixels available for compact delta frames.
+    frame_durations = [120 + 10 * (index % 2) for index in range(total_frames)]
+    quantized_frames[0].save(
+        ASSET_DIR / "workbench-walkthrough.gif",
+        format="GIF",
+        save_all=True,
+        append_images=quantized_frames[1:],
+        duration=frame_durations,
+        loop=0,
+        disposal=1,
+        optimize=True,
+    )
+
+
 def main() -> None:
     build_overview()
     build_construct_flow()
     build_architecture()
+    build_walkthrough()
 
 
 if __name__ == "__main__":

@@ -175,5 +175,3 @@ PUBLIC_DEMO_GENERATION_LIMIT=3
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\run_v2.ps1
 ```
-
-然后访问 [http://localhost:8501](http://localhost:8501)。每个 workspace 只运行一个 Streamlit 进程。需要持久保存研究工作时，请使用本地部署，并在外部备份 `workspace_data/v2/projects/`。不要将 API key、访问码或其他 secrets 提交到版本库。

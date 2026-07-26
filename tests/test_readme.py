@@ -6,7 +6,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
-from PIL import Image, ImageSequence, UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -289,18 +289,28 @@ def _gif_contract(path: Path) -> tuple[int, int]:
             assert image.size == (960, 540)
             frame_count = 0
             total_duration_ms = 0
-            for frame in ImageSequence.Iterator(image):
-                frame.load()
-                duration = frame.info.get("duration")
+            while True:
+                image.load()
+                duration = image.info.get("duration")
                 assert duration is not None
                 duration_ms = int(duration)
                 assert duration_ms > 0
+                disposal = getattr(image, "disposal_method", None)
+                if disposal is None:
+                    disposal = image.info.get("disposal")
+                assert disposal == 1
+                colors = image.convert("RGB").getcolors(maxcolors=65)
+                assert colors is not None and len(colors) <= 64
                 frame_count += 1
                 total_duration_ms += duration_ms
+                try:
+                    image.seek(frame_count)
+                except EOFError:
+                    break
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
         raise AssertionError(f"{path} is not a complete decodable GIF") from exc
-    assert frame_count >= 120
-    assert 35_000 <= total_duration_ms <= 45_000
+    assert frame_count == 320
+    assert total_duration_ms == 40_000
     return frame_count, total_duration_ms
 
 
@@ -668,6 +678,10 @@ def test_docs_builder_emits_lf_only_svg_bytes(path: Path) -> None:
 def test_walkthrough_gif_is_complete_readable_and_within_release_budget() -> None:
     frame_count, duration_ms = _gif_contract(WALKTHROUGH)
     assert 6 <= frame_count / (duration_ms / 1000) <= 10
+
+
+def test_walkthrough_gif_has_exact_release_metadata() -> None:
+    assert _gif_contract(WALKTHROUGH) == (320, 40_000)
 
 
 @pytest.mark.parametrize(

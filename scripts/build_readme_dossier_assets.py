@@ -15,6 +15,13 @@ ORANGE = "#EF5A24"
 NEUTRAL = "#F5F5F6"
 WHITE = "#FFFFFF"
 
+GIF_SIZE = (960, 540)
+FRAMES_PER_SCENE = 64
+TRANSITION_FRAMES = 8
+FRAME_COUNT = 320
+PROGRESS_HEIGHT = 4
+PALETTE_COLORS = 64
+
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
     font = ImageFont.truetype(str(FONT_PATH), size)
@@ -259,7 +266,7 @@ def _walkthrough_scene(
 ) -> Image.Image:
     scene = ImageOps.fit(
         source,
-        (960, 540),
+        GIF_SIZE,
         method=Image.Resampling.LANCZOS,
     ).convert("RGBA")
     overlay = Image.new("RGBA", scene.size, (0, 0, 0, 0))
@@ -269,6 +276,27 @@ def _walkthrough_scene(
     draw.text((30, 18), eyebrow, font=_font(18), fill=accent)
     draw.text((30, 46), heading, font=_font(31), fill=WHITE)
     return Image.alpha_composite(scene, overlay).convert("RGB")
+
+
+def _walkthrough_frame(
+    scenes: list[Image.Image], scene_index: int, scene_frame_index: int
+) -> Image.Image:
+    if scene_index and scene_frame_index < TRANSITION_FRAMES:
+        frame = Image.blend(
+            scenes[scene_index - 1],
+            scenes[scene_index],
+            (scene_frame_index + 1) / TRANSITION_FRAMES,
+        )
+    else:
+        frame = scenes[scene_index].copy()
+
+    global_frame_index = scene_index * FRAMES_PER_SCENE + scene_frame_index
+    progress_width = (global_frame_index + 1) * GIF_SIZE[0] // FRAME_COUNT
+    draw = ImageDraw.Draw(frame)
+    track_top = GIF_SIZE[1] - PROGRESS_HEIGHT
+    draw.rectangle((0, track_top, GIF_SIZE[0] - 1, GIF_SIZE[1] - 1), fill=BLACK)
+    draw.rectangle((0, track_top, progress_width - 1, GIF_SIZE[1] - 1), fill=MAGENTA)
+    return frame
 
 
 def build_walkthrough() -> None:
@@ -309,42 +337,26 @@ def build_walkthrough() -> None:
         for source, eyebrow, heading, accent in scene_specs
     ]
 
-    frames = []
-    total_frames = len(scenes) * 64
-    for scene_index, scene in enumerate(scenes):
-        for scene_frame_index in range(64):
-            if scene_index and scene_frame_index < 8:
-                frame = Image.blend(
-                    scenes[scene_index - 1],
-                    scene,
-                    (scene_frame_index + 1) / 8,
-                )
-            else:
-                frame = scene.copy()
-
-            global_frame_index = scene_index * 64 + scene_frame_index
-            progress_width = (global_frame_index + 1) * frame.width // total_frames
-            draw = ImageDraw.Draw(frame)
-            draw.rectangle((0, 536, frame.width - 1, 539), fill=BLACK)
-            draw.rectangle((0, 536, progress_width - 1, 539), fill=MAGENTA)
-            frames.append(frame)
-
-    palette = frames[0].quantize(
-        colors=64,
+    first_frame = _walkthrough_frame(scenes, 0, 0)
+    palette = first_frame.quantize(
+        colors=PALETTE_COLORS,
         method=Image.Quantize.MEDIANCUT,
         dither=Image.Dither.NONE,
     )
-    quantized_frames = [
-        frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames
-    ]
+    gif_frames = [first_frame.quantize(palette=palette, dither=Image.Dither.NONE)]
+    for global_frame_index in range(1, FRAME_COUNT):
+        scene_index, scene_frame_index = divmod(global_frame_index, FRAMES_PER_SCENE)
+        frame = _walkthrough_frame(scenes, scene_index, scene_frame_index)
+        gif_frames.append(frame.quantize(palette=palette, dither=Image.Dither.NONE))
+
     # GIF delays use 10 ms units, so alternate around 125 ms to preserve 8 fps.
     # Disposal 1 keeps unchanged pixels available for compact delta frames.
-    frame_durations = [120 + 10 * (index % 2) for index in range(total_frames)]
-    quantized_frames[0].save(
+    frame_durations = [120 + 10 * (index % 2) for index in range(FRAME_COUNT)]
+    gif_frames[0].save(
         ASSET_DIR / "workbench-walkthrough.gif",
         format="GIF",
         save_all=True,
-        append_images=quantized_frames[1:],
+        append_images=gif_frames[1:],
         duration=frame_durations,
         loop=0,
         disposal=1,

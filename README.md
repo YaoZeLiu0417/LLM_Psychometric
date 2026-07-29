@@ -6,8 +6,7 @@
 
 <p>
   <a href="#research-workflow">Research workflow</a>
-  · <a href="CASE_STUDY.md">English Case Study</a>
-  · <a href="https://github.com/YaoZeLiu0417/LLM_Psychometric/releases/tag/v0.1.0">v0.1.0 Research Preview</a>
+  · <a href="CASE_STUDY.md">Case Study</a>
   · <a href="#中文使用说明">中文使用说明</a>
 </p>
 

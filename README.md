@@ -46,7 +46,7 @@ The 2023 master's system focused on college students. The current reconstruction
 
 This lineage describes the project's development history. It is not evidence that the current V2 workbench is superior to the earlier system, nor that its items or workflow are validated. No unverified historical sample sizes are claimed here.
 
-## 35-45 second walkthrough
+## A Brief walkthrough
 
 ![Read-only walkthrough of the research workbench from construct overview through generation, responsibility review, and participant preview](docs/assets/readme/workbench-walkthrough.gif)
 

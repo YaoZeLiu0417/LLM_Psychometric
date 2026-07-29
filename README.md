@@ -5,8 +5,7 @@
 <p><strong>A traceable, human-reviewed workflow transforming established Big Five anchors into situational judgement item candidates for mainland Chinese adolescents aged 12-15.</strong></p>
 
 <p>
-  <a href="https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true">Open the deployed app</a>
-  · <a href="#research-workflow">Research workflow</a>
+  <a href="#research-workflow">Research workflow</a>
   · <a href="CASE_STUDY.md">English Case Study</a>
   · <a href="https://github.com/YaoZeLiu0417/LLM_Psychometric/releases/tag/v0.1.0">v0.1.0 Research Preview</a>
   · <a href="#中文使用说明">中文使用说明</a>

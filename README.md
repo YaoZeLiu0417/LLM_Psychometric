@@ -5,8 +5,10 @@
 <p><strong>A traceable, human-reviewed workflow transforming established Big Five anchors into situational judgement item candidates for mainland Chinese adolescents aged 12-15.</strong></p>
 
 <p>
-  <a href="#research-workflow">Research workflow</a>
-  · <a href="CASE_STUDY.md">Case Study</a>
+  <a href="https://adolescent-big-five-workbench-public.streamlit.app/?embedded=true">Open the deployed app</a>
+  · <a href="#research-workflow">Research workflow</a>
+  · <a href="CASE_STUDY.md">English Case Study</a>
+  · <a href="https://github.com/YaoZeLiu0417/LLM_Psychometric/releases/tag/v0.1.0">v0.1.0 Research Preview</a>
   · <a href="#中文使用说明">中文使用说明</a>
 </p>
 
@@ -40,11 +42,11 @@ The system makes item development an inspectable, staged workflow rather than a 
 
 ## From 2023 to the Current Workbench
 
-The 2023 master's system focused on college students. The current reconstruction targets mainland Chinese adolescents aged 12-15 and rebuilds the authoring, anchor-linked traceability, review, and preview workflow around that population and research setting, alongside reference-only downloads.
+The 2023 master's system focused on college students. Archived master's-project materials report a sample of N = 483 and initial internal-consistency estimates (Cronbach's alpha .702-.887; McDonald's omega .79-.87). Participant-level data and protected study materials are not included in this repository.
 
-This lineage describes the project's development history. It is not evidence that the current V2 workbench is superior to the earlier system, nor that its items or workflow are validated. No unverified historical sample sizes are claimed here.
+The current reconstruction targets mainland Chinese adolescents aged 12-15 and rebuilds the authoring, anchor-linked traceability, review, and preview workflow around that population and research setting, alongside reference-only downloads. This lineage describes the project's development history; the historical college-student results do not validate the current adolescent workbench or show that V2 is superior to the earlier system.
 
-## A Brief walkthrough
+## 35-45 second walkthrough
 
 ![Read-only walkthrough of the research workbench from construct overview through generation, responsibility review, and participant preview](docs/assets/readme/workbench-walkthrough.gif)
 
@@ -173,3 +175,5 @@ PUBLIC_DEMO_GENERATION_LIMIT=3
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\run_v2.ps1
 ```
+
+然后访问 [http://localhost:8501](http://localhost:8501)。每个 workspace 只运行一个 Streamlit 进程。需要持久保存研究工作时，请使用本地部署，并在外部备份 `workspace_data/v2/projects/`。不要将 API key、访问码或其他 secrets 提交到版本库。

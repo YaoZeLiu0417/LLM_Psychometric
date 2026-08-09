@@ -30,7 +30,7 @@ PAGES = {
     "PROJECT": (
         "2023 COLLEGE STUDENT STUDY -> 2026 ADOLESCENT RECONSTRUCTION -> FUTURE VALIDATION",
         "2023 STUDY / COLLEGE STUDENT SAMPLE",
-        "Historical summary from the 2023 college-student study; raw response data are no longer available.",
+        "Archived master's-project summary from the 2023 college-student study reports N = 483; raw response data are no longer available.",
     ),
     "CONSTRUCT MAP": (
         "CONSTRUCT TAXONOMY",
@@ -331,7 +331,7 @@ def test_project_and_generation_evidence_notes_have_distinct_presentations() -> 
     project_note = next(
         element.value
         for element in project.markdown
-        if "Historical summary from the 2023 college-student study" in element.value
+        if "Archived master's-project summary from the 2023 college-student study" in element.value
     )
     generation_note = next(
         element.value
